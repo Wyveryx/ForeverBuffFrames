@@ -1,6 +1,10 @@
 ## Interface: 16001
 ## Title: ForeverBuffFrames
-## Notes: Movable player buff and debuff containers
+## Notes: Movable, configurable player buff and debuff bars for WoW Forever
+## Author: Wyveryx
+## Version: 0.9.0-beta.1
+## X-Website: https://github.com/Wyveryx/ForeverBuffFrames
+## X-Category: Buffs & Debuffs
 ## IconTexture: Interface\AddOns\ForeverBuffFrames\Media\MinimapIcon.png
 ## SavedVariables: ForeverBuffFramesDB
 

@@ -1,0 +1,12 @@
+package-as: ForeverBuffFrames
+
+ignore:
+  - .git
+  - .gitignore
+  - .github
+  - .pkgmeta
+  - _backups
+  - dist
+  - Media/CurseForgeAvatar.png
+  - Media/ForeverBuffFramesArtwork.png
+  - Media/MinimapIconSource.png
