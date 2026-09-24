@@ -1,0 +1,17 @@
+## Interface: 16001
+## Title: ForeverBuffFrames
+## Notes: Movable player buff and debuff containers
+## IconTexture: Interface\AddOns\ForeverBuffFrames\Media\MinimapIcon.png
+## SavedVariables: ForeverBuffFramesDB
+
+Core.lua
+Localization.lua
+Media.lua
+Profiles.lua
+Backup.lua
+Alerts.lua
+Theme.lua
+Minimap.lua
+AuraFrames.lua
+Options.lua
+Main.lua

@@ -1,0 +1,10 @@
+# Local safety copies and packaged releases
+_backups/
+*.zip
+
+# Editor and operating-system files
+*.bak
+*.tmp
+.DS_Store
+Thumbs.db
+
