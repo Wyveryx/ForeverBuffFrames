@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.10-beta.1 — Unreleased
+
+- Added one optional magnifying-glass tracking selector fixed at the physical far right of the buff bar.
+- Removed the redundant second tracking icon; the selected native tracking buff now appears in the ordinary buff slots.
+- Populated the selector with class, profession, and racial tracking abilities, including hunter creature tracking, while excluding bankers, mailboxes, innkeepers, quest filters, and other general points of interest.
+- Selecting a tracker disables the other supported trackers so only the chosen tracking buff is added to the bar.
+- Reserved a full-size selector slot inside the buff holder so the movable outline and drag handle include it without overlapping left-growing auras.
+- Replaced the padded quick-slot artwork with a full-edge icon border so the magnifier uses the same visual footprint as neighboring buffs.
+- Applied Blizzard's rounded action-icon mask and frame to match the corner treatment of the aura icons.
+- Added profile and manual backup support for the tracking-control visibility setting.
+
 ## 0.9.9-beta.1 — 2026-09-30
 
 - Added an experimental per-buff Combat only mode for native removal sounds.

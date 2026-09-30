@@ -18,7 +18,7 @@ local Backup = {
         "debuffSoundsEnabled", "debuffSoundName",
         "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison",
         "debuffBorderThickness", "debuffPulseExpansion",
-        "buffRemovedSounds", "buffRemovalSound",
+        "buffRemovedSounds", "buffRemovalSound", "showTrackingControls",
     },
     barFields = {
         "x", "y", "size", "gapX", "gapY", "perRow", "rows", "grow",
@@ -30,6 +30,7 @@ local Backup = {
         debuffAwareness = true, debuffPulse = true,
         debuffSoundsEnabled = true,
         buffRemovedSounds = true,
+        showTrackingControls = true,
         experimentalTTSEnabled = true,
     },
     numbers = {

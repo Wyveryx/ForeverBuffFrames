@@ -20,6 +20,7 @@ function FBF.InitializeProfile(profile)
     if profile.showMinimap == nil then profile.showMinimap = true end
     if profile.hideBlizzardBuffs == nil then profile.hideBlizzardBuffs = false end
     if profile.hideBlizzardDebuffs == nil then profile.hideBlizzardDebuffs = false end
+    if profile.showTrackingControls == nil then profile.showTrackingControls = false end
     if profile.expirationSounds == nil then profile.expirationSounds = profile.alertSpellID ~= nil end
     if profile.buffRemovedSounds == nil then profile.buffRemovedSounds = false end
     if type(profile.buffRemovalSound) ~= "string" then profile.buffRemovalSound = "default" end

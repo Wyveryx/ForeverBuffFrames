@@ -11,6 +11,7 @@ This release targets the Forever beta client (`Interface 16001`).
 - Configurable icon size, spacing, rows, growth direction, and aura ordering
 - Configurable timer and stack text, including font, size, position, and outline
 - Optional placement of known unlimited-duration auras on either side
+- Optional fixed magnifying-glass selector for showing one class, profession, or racial tracking buff in the ordinary buff bar
 - Named profiles with create, copy, rename, switch, and delete controls
 - Optional hiding of Blizzard's original player buff and debuff frames
 - Ten-second buff-expiration sound and raid-warning alerts

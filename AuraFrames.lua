@@ -15,6 +15,7 @@ local testMode = false
 local toggleTest
 local untimedSpellIDs = { buffs = {}, debuffs = {} }
 local untimedSignatures = { buffs = "", debuffs = "" }
+local tracking
 local dispelColors = {
     Magic = { 0.20, 0.60, 1.00 }, Curse = { 0.60, 0.00, 1.00 },
     Disease = { 0.60, 0.40, 0.00 }, Poison = { 0.00, 0.60, 0.00 },
@@ -130,7 +131,7 @@ end
 
 local function showTest(holder, cfg)
     if not holder.test then
-        local test = CreateFrame("Frame", nil, holder)
+        local test = CreateFrame("Frame", nil, holder.auraArea or holder)
         test:SetAllPoints()
         test:SetFrameLevel(holder.container:GetFrameLevel() + 5)
         test.buttons = {}
@@ -259,7 +260,9 @@ end
 local function makeContainer(kind, filter)
     local cfg = getProfile()[kind]
     local knownUntimed = scanUntimedAuras(kind, filter)
-    local width = cfg.perRow * cfg.size + (cfg.perRow - 1) * cfg.gapX
+    local auraWidth = cfg.perRow * cfg.size + (cfg.perRow - 1) * cfg.gapX
+    local trackingWidth = kind == "buffs" and getProfile().showTrackingControls and (cfg.gapX + cfg.size) or 0
+    local width = auraWidth + trackingWidth
     local height = cfg.rows * cfg.size + (cfg.rows - 1) * cfg.gapY
     local holder = CreateFrame("Frame", nil, UIParent)
     holder:SetSize(width, height)
@@ -332,7 +335,12 @@ local function makeContainer(kind, filter)
     holder.handle = handle
     holder.handleFill = handleFill
 
-    local container = CreateFrame("AuraContainer", nil, holder, "CustomAuraContainerTemplate")
+    local auraArea = CreateFrame("Frame", nil, holder)
+    auraArea:SetSize(auraWidth, height)
+    auraArea:SetPoint("TOPLEFT")
+    holder.auraArea = auraArea
+
+    local container = CreateFrame("AuraContainer", nil, auraArea, "CustomAuraContainerTemplate")
     container:SetAllPoints()
     container:EnableMouse(true)
     makeDraggable(container)
@@ -406,6 +414,7 @@ local function makeContainer(kind, filter)
     containers[kind] = container
     holders[kind] = holder
     holder.container = container
+    if kind == "buffs" and tracking then tracking.Attach(holder, cfg) end
     if testMode then
         showTest(holder, cfg)
         container:Hide()
@@ -477,6 +486,7 @@ function FBF.AuraFrames.Create(profileProvider, reporter, soundPlayer)
     getProfile = profileProvider
     report = reporter
     playAlertSound = soundPlayer
+    tracking = FBF.Tracking.Create(profileProvider, reporter)
     return {
         Build = build,
         RefreshUntimedGroups = refreshUntimedGroups,

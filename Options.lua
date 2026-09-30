@@ -1810,6 +1810,24 @@ local function makeConfig()
     end)
     tooltip(reset, L("Reset this bar"), L("Restore this bar's default layout, text settings, and position."))
 
+    local trackingCheck = CreateFrame("CheckButton", nil, layoutControls, "UICheckButtonTemplate")
+    trackingCheck:SetPoint("BOTTOMLEFT", layoutPanel, "BOTTOMLEFT", 25, 60)
+    trackingCheck.textLabel = layoutControls:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    trackingCheck.textLabel:SetPoint("LEFT", trackingCheck, "RIGHT", 2, 0)
+    trackingCheck.textLabel:SetText(L("Show tracking selector at the end of the buff bar"))
+    trackingCheck:SetScript("OnClick", function(self)
+        if InCombatLockdown() then
+            self:SetChecked(getProfile().showTrackingControls)
+            report(L("Change tracking controls after combat."))
+            return
+        end
+        getProfile().showTrackingControls = self:GetChecked() and true or false
+        build("buffs")
+        refreshConfig()
+    end)
+    tooltip(trackingCheck, L("Buff-bar tracking controls"),
+        L("Adds one fixed magnifying glass at the far right. Choosing a class, profession, or racial tracker shows its native buff in the bar; general minimap filters are excluded."))
+
     local profileHeading = profilesPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     profileHeading:SetPoint("TOPLEFT", 25, -105)
     profileHeading:SetText(L("Named profiles"))
@@ -2564,6 +2582,7 @@ local function makeConfig()
         diagnosticTestRow = { diagnosticTestIcons, diagnosticSound },
         diagnosticStatusRow = { refreshStatus, clearStatus },
         diagnosticReportRow = { copyReport, retryDiagnostics },
+        trackingCheck = trackingCheck,
     }
 
     refreshConfig = function()
@@ -2600,6 +2619,8 @@ local function makeConfig()
         expirationSoundCheck:SetChecked(getProfile().expirationSounds)
         ownBuffsCheck:SetChecked(getProfile().onlyMyBuffs)
         removedSoundCheck:SetChecked(getProfile().buffRemovedSounds)
+        trackingCheck:SetChecked(getProfile().showTrackingControls)
+        trackingCheck:SetShown(selectedTab == "buffs" and selectedSection == "layout")
         local removalSoundName = getProfile().buffRemovalSound
         for _, choice in ipairs(mediaChoices("sound")) do
             if choice.value == removalSoundName then removalSoundName = choice.label; break end
