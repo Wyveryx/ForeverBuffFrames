@@ -13,7 +13,7 @@ Development status and release scope are tracked in [ROADMAP.md](ROADMAP.md).
 - Configurable icon size, spacing, rows, growth direction, and aura ordering
 - Configurable timer and stack text, including font, size, position, and outline
 - Optional placement of known unlimited-duration auras on either side
-- Optional fixed magnifying-glass selector for showing one class, profession, or racial tracking buff in the ordinary buff bar
+- Optional fixed magnifying-glass selector that activates class, profession, and racial tracking spells through native spell actions and shows their buffs in the ordinary buff bar
 - Named profiles with create, copy, rename, switch, and delete controls
 - Optional hiding of Blizzard's original player buff and debuff frames
 - Ten-second buff-expiration sound and raid-warning alerts
@@ -72,7 +72,7 @@ The Debuff Library is generated from build-matched Forever client tables and rec
 
 Most customization is easier through the settings window.
 
-Opening Diagnostics is read-only. Test sounds, sample icons, retries, and future experimental probes run only when you press their controls.
+Opening Diagnostics is read-only. Test sounds, sample icons, and alert rescans run only when you press their controls.
 
 ## Feedback
 

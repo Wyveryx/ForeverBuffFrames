@@ -97,5 +97,11 @@ function FBF.CreateAlerts(getDB, report, playAlertSound, refreshOptions)
         report(L(command == "on" and "10-second expiry alerts enabled." or "10-second expiry alerts disabled."))
     end
 
+    function service.GetStatus()
+        local watched = 0
+        for _ in pairs(watchedAuras) do watched = watched + 1 end
+        return { enabled = getDB().expirationSounds == true, watched = watched }
+    end
+
     return service
 end

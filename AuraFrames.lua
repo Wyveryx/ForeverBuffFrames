@@ -176,7 +176,6 @@ local function showTest(holder, cfg)
                             if seconds == 10 then
                                 if RaidNotice_AddMessage and RaidWarningFrame then
                                     RaidNotice_AddMessage(RaidWarningFrame, L("Test buff expires in 10 seconds"), (ChatTypeInfo and ChatTypeInfo.RAID_WARNING) or { r = 1, g = 0, b = 0 })
-                                    report(L("Sample 10-second warning shown."))
                                 else
                                     report(L("Raid-warning display is unavailable in this client."))
                                 end
@@ -187,7 +186,6 @@ local function showTest(holder, cfg)
                         else
                             duration:SetText(L("done"))
                             flash:Show()
-                            report(L("Sample buff expired."))
                             C_Timer.After(1.5, function()
                                 if test.run == run then
                                     flash:Hide()
@@ -426,7 +424,9 @@ local filters = { buffs = "HELPFUL", debuffs = "HARMFUL" }
 local function build(kind)
     local ok, err = pcall(makeContainer, kind, filters[kind])
     results[kind] = ok and L("created") or tostring(err)
-    report(L("%s: %s", L(kind == "buffs" and "Buffs" or "Debuffs"), results[kind]))
+    if not ok then
+        report(L("%s: %s", L(kind == "buffs" and "Buffs" or "Debuffs"), results[kind]))
+    end
 end
 
 local function refreshUntimedGroups()
@@ -443,7 +443,6 @@ end
 local function start()
     build("buffs")
     build("debuffs")
-    report(L("Use /fbf for layout commands; /fbf unlock moves the bars."))
 end
 
 local function setUnlocked(value)
@@ -498,6 +497,7 @@ function FBF.AuraFrames.Create(profileProvider, reporter, soundPlayer)
         GetContainer = function(kind) return containers[kind] end,
         GetResult = function(kind) return results[kind] end,
         GetAwarenessResult = function() return awarenessResult end,
+        GetTrackingStatus = function() return tracking and tracking.GetStatus() or {} end,
         PreviewDebuffAwareness = previewDebuffAwareness,
     }
 end

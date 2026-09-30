@@ -5,7 +5,8 @@ and what is intentionally deferred. It is a scope guard as well as a roadmap.
 
 ## Current position
 
-**Phase 13 is complete. ForeverBuffFrames is in the Phase 13 release gate.**
+**Phase 13 and its release gate are complete. ForeverBuffFrames 0.9.10-beta.1
+is packaged for release.**
 
 No new feature phase begins until the release gate is complete and the current
 beta is packaged. Corrections found during verification remain part of the
@@ -55,7 +56,8 @@ invented individual titles.
 - Fixed buff-bar magnifying-glass selector.
 - Class, profession, and racial tracking abilities without duplicating general
   minimap service filters.
-- One-at-a-time native tracking selection shown as an ordinary buff aura.
+- Native tracking spell selection shown as ordinary buff auras, with the client
+  deciding which tracking categories replace or coexist with one another.
 - Selector integration with bar movement, sizing, and left/right growth.
 - Consistent popup spacing, layering, containment, and responsive page fixes.
 
@@ -63,13 +65,13 @@ invented individual titles.
 
 Only the following work is in scope before the next beta release:
 
-1. Regression-test expiration and buff-removal alerts.
-2. Regression-test debuff sounds, the library, and Personal Trackers.
-3. Verify profile switching and backup/recovery across characters.
-4. Test buff/debuff layouts across icon sizes, rows, growth directions, UI
+1. [x] Regression-test expiration and buff-removal alerts.
+2. [x] Regression-test debuff sounds, the library, and Personal Trackers.
+3. [x] Verify profile switching and backup/recovery across characters.
+4. [x] Test buff/debuff layouts across icon sizes, rows, growth directions, UI
    scales, and supported configuration text sizes.
-5. Review Diagnostics for obsolete or missing release-support information.
-6. Finish the changelog, release notes, and distributable beta package.
+5. [x] Review Diagnostics for obsolete or missing release-support information.
+6. [x] Finish the changelog, release notes, and distributable beta package.
 
 The detailed visual checks remain in `RELEASE_CHECKLIST.md`.
 

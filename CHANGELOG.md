@@ -1,16 +1,18 @@
 # Changelog
 
-## 0.9.10-beta.1 — Unreleased
+## 0.9.10-beta.1 — 2026-09-30
 
 - Added one optional magnifying-glass tracking selector fixed at the physical far right of the buff bar.
 - Removed the redundant second tracking icon; the selected native tracking buff now appears in the ordinary buff slots.
 - Populated the selector with class, profession, and racial tracking abilities, including hunter creature tracking, while excluding bankers, mailboxes, innkeepers, quest filters, and other general points of interest.
-- Selecting a tracker disables the other supported trackers so only the chosen tracking buff is added to the bar.
+- Tracking choices now invoke their actual secure spell actions, matching spellbook and action-bar behavior while leaving replacement or coexistence rules to the client.
 - Reserved a full-size selector slot inside the buff holder so the movable outline and drag handle include it without overlapping left-growing auras.
 - Replaced the padded quick-slot artwork with a full-edge icon border so the magnifier uses the same visual footprint as neighboring buffs.
 - Applied Blizzard's rounded action-icon mask and frame to match the corner treatment of the aura icons.
 - Standardized dropdown row height, padding, selected-state insets, selector height, and popup elevation across the configuration interface.
 - Added safe right padding to Debuff Sound custom-file rows, kept Personal Trackers inside the responsive content pane, and capped the long default-removal selector within its Alerts column.
+- Updated Diagnostics with live expiration-watch and tracking-selector status, and removed stale Phase 10 development wording.
+- Removed routine startup, successful container-rebuild, and successful sample-alert debug messages from chat while retaining actionable warnings and errors.
 - Added profile and manual backup support for the tracking-control visibility setting.
 
 ## 0.9.9-beta.1 — 2026-09-30

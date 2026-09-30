@@ -49,21 +49,6 @@ function FBF.Tracking.Create(profileProvider, reporter)
         if current and current.menu then current.menu:Hide() end
     end
 
-    local function setExclusiveTracking(selectedIndex)
-        if InCombatLockdown() then report(L("Change tracking after combat.")); return false end
-        if not C_Minimap or not C_Minimap.SetTracking then
-            report(L("Tracking selection is unavailable in this client.")); return false
-        end
-        for index = 1, count() do
-            local info = getInfo(index)
-            if isSupported(info) then
-                local ok = pcall(C_Minimap.SetTracking, index, index == selectedIndex)
-                if not ok then report(L("The client blocked that tracking change.")); return false end
-            end
-        end
-        return true
-    end
-
     local function buildMenu(owner)
         if owner.menu then owner.menu:Hide() end
         local entries = {}
@@ -89,9 +74,16 @@ function FBF.Tracking.Create(profileProvider, reporter)
         child:SetSize(206, math.max(1, #entries * FBF.Theme.popupRowStep))
         scroll:SetScrollChild(child)
         for rowIndex, entry in ipairs(entries) do
-            local row = CreateFrame("Button", nil, child)
+            local row = CreateFrame("Button", nil, child, "SecureActionButtonTemplate")
             row:SetSize(206, FBF.Theme.popupRowHeight)
             row:SetPoint("TOPLEFT", 0, -(rowIndex - 1) * FBF.Theme.popupRowStep)
+            row:RegisterForClicks("LeftButtonUp")
+            row:SetAttribute("type", "spell")
+            row:SetAttribute("spell", tonumber(entry.info.spellID))
+            row:SetAttribute("type1", "spell")
+            row:SetAttribute("spell1", tonumber(entry.info.spellID))
+            row:SetAttribute("useOnKeyDown", false)
+            row:SetAttribute("checkselfcast", true)
             FBF.Theme.AddRowHighlight(row, 2)
             local icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(22, 22); icon:SetPoint("LEFT", 4, 0); icon:SetTexture(entry.info.texture)
@@ -100,7 +92,7 @@ function FBF.Tracking.Create(profileProvider, reporter)
             local check = row:CreateTexture(nil, "OVERLAY")
             check:SetSize(20, 20); check:SetPoint("RIGHT", -4, 0); check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
             check:SetShown(entry.info.active == true)
-            row:SetScript("OnClick", function() setExclusiveTracking(entry.index); closeMenu() end)
+            row:SetScript("PostClick", closeMenu)
         end
         if #entries == 0 then
             local empty = child:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -159,5 +151,18 @@ function FBF.Tracking.Create(profileProvider, reporter)
         current = selector
     end
 
-    return { Attach = attach }
+    local function getStatus()
+        local status = { enabled = getProfile().showTrackingControls == true, choices = 0, active = 0 }
+        if InCombatLockdown() then status.restricted = true; return status end
+        for index = 1, count() do
+            local info = getInfo(index)
+            if isSupported(info) then
+                status.choices = status.choices + 1
+                if info.active then status.active = status.active + 1 end
+            end
+        end
+        return status
+    end
+
+    return { Attach = attach, GetStatus = getStatus }
 end

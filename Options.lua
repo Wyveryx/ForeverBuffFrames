@@ -1235,7 +1235,7 @@ local function makeConfig()
     testHelp:SetPoint("TOPLEFT", testHeading, "BOTTOMLEFT", 0, -8)
     testHelp:SetWidth(310)
     testHelp:SetJustifyH("LEFT")
-    testHelp:SetText(L("These previews use the addon's current test icons and alert sound. Combat-safe feature probes will be added in their own phases."))
+    testHelp:SetText(L("Preview existing effects and copy a compact report for support. Opening this tab does not change gameplay settings."))
     local diagnosticTestIcons = CreateFrame("Button", nil, diagnosticsPanel, "UIPanelButtonTemplate")
     diagnosticTestIcons:SetSize(155, 25)
     diagnosticTestIcons:SetPoint("TOPLEFT", testHelp, "BOTTOMLEFT", 0, -12)
@@ -1307,6 +1307,8 @@ local function makeConfig()
         local state = getDiagnosticState()
         local soundState = debuffSounds and debuffSounds.GetStatus() or {}
         local removalState = buffRemovalSounds.GetStatus and buffRemovalSounds.GetStatus() or {}
+        local expiryState = alerts.GetStatus and alerts.GetStatus() or {}
+        local trackingState = auraFrames.GetTrackingStatus and auraFrames.GetTrackingStatus() or {}
         return {
             client = tostring(version or "?") .. " (" .. tostring(build or "?") .. ")",
             interface = tostring(interface or "?"),
@@ -1316,6 +1318,12 @@ local function makeConfig()
             typed = container and container.SetAuraGroupCandidateFilters ~= nil,
             sound = C_UnitAuras and C_UnitAuras.AddAuraSound ~= nil,
             tracking = C_Minimap and C_Minimap.GetNumTrackingTypes ~= nil and C_Minimap.GetTrackingInfo ~= nil,
+            trackingEnabled = trackingState.enabled == true,
+            trackingChoices = trackingState.choices or 0,
+            trackingActive = trackingState.active or 0,
+            trackingRestricted = trackingState.restricted == true,
+            expiryEnabled = expiryState.enabled == true,
+            expiryWatched = expiryState.watched or 0,
             awareness = auraFrames.GetAwarenessResult and auraFrames.GetAwarenessResult() or "Unavailable",
             debuffSounds = soundState.state or "Unavailable",
             soundRegistrations = soundState.registered or 0,
@@ -1348,6 +1356,10 @@ local function makeConfig()
             "Typed candidate filters: " .. tostring(v.typed),
             "Aura sounds: " .. tostring(v.sound),
             "Tracking API: " .. tostring(v.tracking),
+            "Tracking selector enabled/choices/active: " .. tostring(v.trackingEnabled) .. "/" ..
+                tostring(v.trackingChoices) .. "/" .. tostring(v.trackingActive),
+            "Tracking list restricted: " .. tostring(v.trackingRestricted),
+            "10-second alerts enabled/watched: " .. tostring(v.expiryEnabled) .. "/" .. tostring(v.expiryWatched),
             "Debuff awareness: " .. tostring(v.awareness),
             "Debuff sounds: " .. tostring(v.debuffSounds),
             "Debuff sound registrations: " .. tostring(v.soundRegistrations),
@@ -1372,6 +1384,10 @@ local function makeConfig()
             L("Typed aura filters") .. ": " .. yesNo(v.typed),
             L("Combat-safe aura sounds") .. ": " .. yesNo(v.sound),
             L("Tracking API") .. ": " .. yesNo(v.tracking),
+            L("Tracking selector") .. ": " .. L(v.trackingEnabled and "Enabled" or "Disabled") .. " (" ..
+                v.trackingChoices .. " " .. L("available") .. ", " .. v.trackingActive .. " " .. L("active") .. ")",
+            L("10-second expiry alert") .. ": " .. L(v.expiryEnabled and "Enabled" or "Disabled") .. " (" ..
+                v.expiryWatched .. " " .. L("watched") .. ")",
             L("Debuff awareness") .. ": " .. L(v.awareness),
             L("Debuff sounds") .. ": " .. L(v.debuffSounds) .. " (" ..
                 v.soundRegistrations .. " " .. L("registered") .. ", " ..
@@ -1832,7 +1848,7 @@ local function makeConfig()
         refreshConfig()
     end)
     tooltip(trackingCheck, L("Buff-bar tracking controls"),
-        L("Adds one fixed magnifying glass at the far right. Choosing a class, profession, or racial tracker shows its native buff in the bar; general minimap filters are excluded."))
+        L("Adds one fixed magnifying glass at the far right. Choosing a class, profession, or racial tracker activates its native spell and shows its buff in the bar; the client controls which trackers can coexist and general minimap filters are excluded."))
 
     local profileHeading = profilesPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     profileHeading:SetPoint("TOPLEFT", 25, -105)
