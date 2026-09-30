@@ -6,6 +6,7 @@ local db
 local database
 local minimapButton
 local stockFrames = {}
+local diagnosticState = { lastBlocked = nil }
 local function playAlertSound()
     local source = soundSource(db and db.alertSound or "default")
     if not source then return false end
@@ -59,9 +60,11 @@ local alerts = FBF.CreateAlerts(
     report,
     playAlertSound,
     function() if options then options.Refresh() end end)
+local buffRemovalSounds = FBF.CreateBuffRemovalSounds(function() return db end, soundSource)
 local handleAlertCommand = alerts.Handle
 local syncExpiryAlerts = alerts.Sync
 local auraFrames = FBF.AuraFrames.Create(function() return db end, report, playAlertSound)
+local debuffSounds = FBF.CreateDebuffSounds(function() return db end, report, soundSource)
 local build = auraFrames.Build
 local refreshUntimedGroups = auraFrames.RefreshUntimedGroups
 local start = auraFrames.Start
@@ -80,6 +83,10 @@ options = FBF.Options.Create({
     ApplyStockVisibility = applyStockVisibility,
     AuraFrames = auraFrames,
     Alerts = alerts,
+    DebuffSounds = debuffSounds,
+    BuffRemovalSounds = buffRemovalSounds,
+    GetDiagnosticState = function() return diagnosticState end,
+    ClearDiagnosticState = function() diagnosticState.lastBlocked = nil end,
 })
 local openConfig = options.Open
 local tooltip = options.Tooltip
@@ -110,6 +117,9 @@ SlashCmdList["FBF"] = function(message)
         return
     elseif message == "config" or message == "options" then
         openConfig()
+        return
+    elseif message == "debug" or message == "diagnostics" then
+        openConfig("diagnostics")
         return
     end
     local alertValue = rawMessage:match("^[Aa][Ll][Ee][Rr][Tt]%s+(.+)$")
@@ -182,16 +192,19 @@ events:RegisterEvent("ADDON_LOADED")
 events:RegisterEvent("PLAYER_LOGIN")
 events:RegisterEvent("PLAYER_ENTERING_WORLD")
 events:RegisterEvent("PLAYER_REGEN_ENABLED")
+events:RegisterEvent("PLAYER_REGEN_DISABLED")
 if events.RegisterUnitEvent then
     events:RegisterUnitEvent("UNIT_AURA", "player")
 else
     events:RegisterEvent("UNIT_AURA")
 end
 events:RegisterEvent("ADDON_ACTION_BLOCKED")
-events:SetScript("OnEvent", function(self, event, addon)
+events:SetScript("OnEvent", function(self, event, addon, blockedFunction)
     if event == "ADDON_ACTION_BLOCKED" then
         if addon == ADDON then
+            diagnosticState.lastBlocked = blockedFunction or L("Unknown operation")
             report(L("The client blocked an addon action; check the Lua error for details."))
+            if options then options.Refresh() end
         end
     elseif event == "ADDON_LOADED" and addon == ADDON then
         database = FBF.Profiles.InitializeDatabase(ForeverBuffFramesDB)
@@ -206,11 +219,24 @@ events:SetScript("OnEvent", function(self, event, addon)
         createMinimapButton()
         applyStockVisibility()
         syncExpiryAlerts()
+        buffRemovalSounds.Learn()
+        buffRemovalSounds.Sync()
+        debuffSounds.Learn()
+        debuffSounds.Sync()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        buffRemovalSounds.EnterCombat()
+        if options then options.Refresh() end
     elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_ENABLED" then
         refreshUntimedGroups()
         syncExpiryAlerts()
+        buffRemovalSounds.Learn()
+        buffRemovalSounds.Sync()
+        debuffSounds.Learn()
+        debuffSounds.Sync()
     elseif event == "UNIT_AURA" and addon == "player" then
         refreshUntimedGroups()
         syncExpiryAlerts()
+        buffRemovalSounds.Learn()
+        debuffSounds.Learn()
     end
 end)

@@ -545,6 +545,213 @@ translations.ruRU["This cannot be undone."] = "Это действие нель�
 translations.zhCN["This cannot be undone."] = "此操作无法撤销。"
 translations.zhTW["This cannot be undone."] = "此操作無法復原。"
 
+local diagnosticKeys = {
+    "Diagnostics", "Preview existing effects and collect a compact support report.",
+    "Preview existing effects and copy a compact report for support. Opening this tab does not change gameplay settings.",
+    "Test Lab", "These previews use the addon's current test icons and alert sound. Combat-safe feature probes will be added in their own phases.",
+    "System Status", "Client", "Interface", "Aura data restricted", "Aura containers",
+    "Native dispel styling", "Typed aura filters", "Combat-safe aura sounds", "Tracking API",
+    "Last blocked operation", "Available", "Unavailable", "Yes", "No", "Recheck capabilities",
+    "Clear blocked action", "Copy diagnostic report", "Rescan expiry alerts", "Rescan expiry alerts after combat.",
+    "Show experimental tools", "Experimental controls are intentionally empty in Phase 10. Later phases will add explicit border, sound, tracking, and duration probes here.",
+    "Reveal opt-in development probes. They never run merely because this tab is opened.", "Unknown operation",
+    "Read the current combat, aura, sound, tracking, and blocked-action status again.",
+    "Forget the last ADDON_ACTION_BLOCKED event recorded for this session. This does not hide Lua errors.",
+    "Scan current buffs again and schedule eligible ten-second expiry alerts. This does not play a test sound.",
+}
+local diagnosticValues = {
+    deDE = {
+        "Diagnose", "Vorhandene Effekte testen und einen kompakten Supportbericht erstellen.",
+        "Vorhandene Effekte testen und einen kompakten Supportbericht kopieren. Das Öffnen dieses Tabs ändert keine Spieleinstellungen.",
+        "Testlabor", "Diese Vorschauen verwenden die aktuellen Testsymbole und den Warnton des Addons. Kampfsichere Funktionstests folgen in eigenen Phasen.",
+        "Systemstatus", "Client", "Interface", "Aurdaten eingeschränkt", "Aurcontainer", "Native Bannstil-Anzeige", "Typisierte Aurafilter", "Kampfsichere Auratöne", "Ortungs-API", "Letzte blockierte Aktion",
+        "Verfügbar", "Nicht verfügbar", "Ja", "Nein", "Status aktualisieren", "Letzten Fehler löschen", "Diagnosebericht kopieren", "Warneinrichtung erneut versuchen", "Versuche die Warneinrichtung nach dem Kampf erneut.",
+        "Experimentelle Werkzeuge anzeigen", "Die experimentellen Bedienelemente sind in Phase 10 absichtlich leer. Spätere Phasen ergänzen hier ausdrückliche Tests für Rahmen, Töne, Ortung und Dauer.",
+        "Blendet optionale Entwicklungstests ein. Sie starten niemals nur durch das Öffnen dieses Tabs.", "Unbekannte Aktion",
+        "Liest den aktuellen Kampf-, Aura-, Ton-, Ortungs- und Blockierungsstatus erneut ein.", "Vergisst das letzte ADDON_ACTION_BLOCKED-Ereignis dieser Sitzung. Lua-Fehler werden dadurch nicht ausgeblendet.", "Prüft aktuelle Stärkungszauber erneut und plant geeignete Warnungen zehn Sekunden vor Ablauf. Dabei wird kein Testton abgespielt.",
+    },
+    esES = {
+        "Diagnóstico", "Prueba los efectos existentes y genera un informe compacto para soporte.",
+        "Prueba los efectos existentes y copia un informe compacto para soporte. Abrir esta pestaña no cambia la configuración de juego.",
+        "Laboratorio de pruebas", "Estas vistas previas usan los iconos de prueba y el sonido de alerta actuales del addon. Las pruebas seguras en combate llegarán en sus propias fases.",
+        "Estado del sistema", "Cliente", "Interfaz", "Datos de auras restringidos", "Contenedores de auras", "Estilo nativo de disipación", "Filtros de aura por tipo", "Sonidos de aura seguros en combate", "API de seguimiento", "Última operación bloqueada",
+        "Disponible", "No disponible", "Sí", "No", "Actualizar estado", "Borrar último error", "Copiar informe de diagnóstico", "Reintentar configuración de alertas", "Reintenta la configuración de alertas después del combate.",
+        "Mostrar herramientas experimentales", "Los controles experimentales están vacíos intencionadamente en la fase 10. Las fases posteriores añadirán aquí pruebas explícitas de bordes, sonidos, seguimiento y duración.",
+        "Muestra pruebas de desarrollo opcionales. Nunca se ejecutan solo por abrir esta pestaña.", "Operación desconocida",
+        "Vuelve a leer el estado actual de combate, auras, sonido, seguimiento y acciones bloqueadas.", "Olvida el último evento ADDON_ACTION_BLOCKED registrado en esta sesión. No oculta los errores de Lua.", "Vuelve a analizar los beneficios actuales y programa las alertas válidas a diez segundos de expirar. No reproduce un sonido de prueba.",
+    },
+    frFR = {
+        "Diagnostic", "Testez les effets existants et créez un rapport d'assistance compact.",
+        "Testez les effets existants et copiez un rapport d'assistance compact. Ouvrir cet onglet ne modifie aucun réglage de jeu.",
+        "Laboratoire de test", "Ces aperçus utilisent les icônes de test et le son d'alerte actuels de l'addon. Les tests compatibles avec le combat seront ajoutés dans leurs propres phases.",
+        "État du système", "Client", "Interface", "Données d'aura restreintes", "Conteneurs d'auras", "Style natif de dissipation", "Filtres d'aura typés", "Sons d'aura compatibles avec le combat", "API de pistage", "Dernière opération bloquée",
+        "Disponible", "Indisponible", "Oui", "Non", "Actualiser l'état", "Effacer la dernière erreur", "Copier le rapport de diagnostic", "Réessayer la configuration des alertes", "Réessayez la configuration des alertes après le combat.",
+        "Afficher les outils expérimentaux", "Les commandes expérimentales sont volontairement vides pendant la phase 10. Les phases suivantes ajouteront ici des tests explicites de bordure, son, pistage et durée.",
+        "Affiche les tests de développement facultatifs. Ils ne s'exécutent jamais simplement à l'ouverture de cet onglet.", "Opération inconnue",
+        "Relit l'état actuel du combat, des auras, du son, du pistage et des actions bloquées.", "Oublie le dernier événement ADDON_ACTION_BLOCKED enregistré pendant cette session. Cela ne masque pas les erreurs Lua.", "Analyse à nouveau les améliorations actuelles et programme les alertes admissibles dix secondes avant expiration. Aucun son de test n'est joué.",
+    },
+    itIT = {
+        "Diagnostica", "Prova gli effetti esistenti e crea un rapporto compatto per l'assistenza.",
+        "Prova gli effetti esistenti e copia un rapporto compatto per l'assistenza. Aprire questa scheda non cambia le impostazioni di gioco.",
+        "Laboratorio di prova", "Queste anteprime usano le icone di prova e il suono di avviso correnti dell'addon. Le verifiche sicure in combattimento saranno aggiunte nelle rispettive fasi.",
+        "Stato del sistema", "Client", "Interfaccia", "Dati aura limitati", "Contenitori aura", "Stile nativo di dissoluzione", "Filtri aura tipizzati", "Suoni aura sicuri in combattimento", "API di tracciamento", "Ultima operazione bloccata",
+        "Disponibile", "Non disponibile", "Sì", "No", "Aggiorna stato", "Cancella ultimo errore", "Copia rapporto diagnostico", "Riprova configurazione avvisi", "Riprova la configurazione degli avvisi dopo il combattimento.",
+        "Mostra strumenti sperimentali", "I controlli sperimentali sono volutamente vuoti nella fase 10. Le fasi successive aggiungeranno qui verifiche esplicite per bordi, suoni, tracciamento e durata.",
+        "Mostra verifiche di sviluppo facoltative. Non vengono mai eseguite solo aprendo questa scheda.", "Operazione sconosciuta",
+        "Rilegge lo stato attuale di combattimento, aure, suoni, tracciamento e azioni bloccate.", "Dimentica l'ultimo evento ADDON_ACTION_BLOCKED registrato in questa sessione. Non nasconde gli errori Lua.", "Analizza nuovamente i benefici attuali e pianifica gli avvisi validi dieci secondi prima della scadenza. Non riproduce un suono di prova.",
+    },
+    ptBR = {
+        "Diagnóstico", "Teste os efeitos existentes e gere um relatório compacto para o suporte.",
+        "Teste os efeitos existentes e copie um relatório compacto para o suporte. Abrir esta aba não altera as configurações do jogo.",
+        "Laboratório de testes", "Estas prévias usam os ícones de teste e o som de alerta atuais do addon. Testes seguros em combate serão adicionados em suas próprias fases.",
+        "Status do sistema", "Cliente", "Interface", "Dados de aura restritos", "Contêineres de aura", "Estilo nativo de dissipação", "Filtros de aura tipados", "Sons de aura seguros em combate", "API de rastreamento", "Última operação bloqueada",
+        "Disponível", "Indisponível", "Sim", "Não", "Atualizar status", "Limpar último erro", "Copiar relatório de diagnóstico", "Tentar configurar alertas novamente", "Tente configurar os alertas novamente após o combate.",
+        "Mostrar ferramentas experimentais", "Os controles experimentais estão intencionalmente vazios na fase 10. Fases posteriores adicionarão aqui testes explícitos de borda, som, rastreamento e duração.",
+        "Mostra testes de desenvolvimento opcionais. Eles nunca são executados apenas porque esta aba foi aberta.", "Operação desconhecida",
+        "Lê novamente o estado atual de combate, auras, som, rastreamento e ações bloqueadas.", "Esquece o último evento ADDON_ACTION_BLOCKED registrado nesta sessão. Isso não oculta erros Lua.", "Verifica novamente os bônus atuais e agenda alertas válidos dez segundos antes de expirarem. Isso não toca um som de teste.",
+    },
+    ruRU = {
+        "Диагностика", "Проверьте существующие эффекты и создайте краткий отчёт для поддержки.",
+        "Проверьте существующие эффекты и скопируйте краткий отчёт для поддержки. Открытие этой вкладки не меняет игровые настройки.",
+        "Лаборатория тестов", "Эти проверки используют текущие тестовые значки и звук оповещения аддона. Безопасные в бою проверки будут добавлены на отдельных этапах.",
+        "Состояние системы", "Клиент", "Интерфейс", "Данные аур ограничены", "Контейнеры аур", "Стандартное оформление рассеивания", "Типизированные фильтры аур", "Безопасные в бою звуки аур", "API отслеживания", "Последняя заблокированная операция",
+        "Доступно", "Недоступно", "Да", "Нет", "Обновить состояние", "Очистить последнюю ошибку", "Скопировать отчёт диагностики", "Повторить настройку оповещений", "Повторите настройку оповещений после боя.",
+        "Показать экспериментальные инструменты", "Экспериментальные элементы на этапе 10 намеренно пусты. На следующих этапах здесь появятся отдельные проверки рамок, звуков, отслеживания и длительности.",
+        "Показывает необязательные проверки для разработки. Они никогда не запускаются только из-за открытия этой вкладки.", "Неизвестная операция",
+        "Повторно считывает текущее состояние боя, аур, звука, отслеживания и заблокированных действий.", "Забывает последнее событие ADDON_ACTION_BLOCKED, записанное в этом сеансе. Ошибки Lua при этом не скрываются.", "Повторно проверяет текущие положительные эффекты и планирует подходящие оповещения за десять секунд до окончания. Тестовый звук не воспроизводится.",
+    },
+    koKR = {
+        "진단", "기존 효과를 시험하고 지원용 간단한 보고서를 만듭니다.",
+        "기존 효과를 시험하고 지원용 간단한 보고서를 복사합니다. 이 탭을 여는 것만으로 게임 설정이 바뀌지 않습니다.",
+        "테스트 연구실", "이 미리 보기는 애드온의 현재 테스트 아이콘과 알림 소리를 사용합니다. 전투 중 안전한 기능 검사는 각 단계에서 추가됩니다.",
+        "시스템 상태", "클라이언트", "인터페이스", "오라 데이터 제한됨", "오라 컨테이너", "기본 해제 유형 표시", "유형별 오라 필터", "전투 중 안전한 오라 소리", "추적 API", "마지막으로 차단된 동작",
+        "사용 가능", "사용 불가", "예", "아니요", "상태 새로 고침", "마지막 오류 지우기", "진단 보고서 복사", "알림 설정 다시 시도", "전투가 끝난 뒤 알림 설정을 다시 시도하세요.",
+        "실험 도구 표시", "10단계에서는 실험용 조작부가 의도적으로 비어 있습니다. 이후 단계에서 테두리, 소리, 추적 및 지속시간 검사를 여기에 추가합니다.",
+        "선택형 개발 검사를 표시합니다. 이 탭을 여는 것만으로 실행되지 않습니다.", "알 수 없는 동작",
+        "현재 전투, 오라, 소리, 추적 및 차단된 동작 상태를 다시 읽습니다.", "이 세션에 기록된 마지막 ADDON_ACTION_BLOCKED 이벤트를 지웁니다. Lua 오류를 숨기지는 않습니다.", "현재 강화 효과를 다시 검사하고 만료 10초 전 알림을 예약합니다. 테스트 소리는 재생하지 않습니다.",
+    },
+    zhCN = {
+        "诊断", "预览现有效果并生成简洁的支持报告。",
+        "预览现有效果并复制简洁的支持报告。打开此标签页不会更改游戏设置。",
+        "测试实验室", "这些预览使用插件当前的测试图标和提醒音效。战斗中安全的功能检测将在各自阶段加入。",
+        "系统状态", "客户端", "界面", "光环数据受限", "光环容器", "原生驱散类型样式", "分类光环过滤器", "战斗中安全的光环音效", "追踪 API", "上次被阻止的操作",
+        "可用", "不可用", "是", "否", "刷新状态", "清除上次错误", "复制诊断报告", "重试提醒设置", "请在战斗结束后重试提醒设置。",
+        "显示实验工具", "第 10 阶段的实验控件特意留空。后续阶段将在此加入明确的边框、音效、追踪和持续时间检测。",
+        "显示可选的开发检测。它们不会仅因打开此标签页而运行。", "未知操作",
+        "重新读取当前的战斗、光环、音效、追踪和操作阻止状态。", "清除此会话中记录的上一个 ADDON_ACTION_BLOCKED 事件。这不会隐藏 Lua 错误。", "重新扫描当前增益，并为符合条件的增益安排到期前十秒提醒。此操作不会播放测试音效。",
+    },
+    zhTW = {
+        "診斷", "預覽現有效果並產生精簡的支援報告。",
+        "預覽現有效果並複製精簡的支援報告。開啟此分頁不會變更遊戲設定。",
+        "測試實驗室", "這些預覽使用插件目前的測試圖示和提醒音效。戰鬥中安全的功能檢測將在各自階段加入。",
+        "系統狀態", "用戶端", "介面", "光環資料受限", "光環容器", "原生驅散類型樣式", "分類光環篩選器", "戰鬥中安全的光環音效", "追蹤 API", "上次被阻止的操作",
+        "可用", "不可用", "是", "否", "重新整理狀態", "清除上次錯誤", "複製診斷報告", "重試提醒設定", "請在戰鬥結束後重試提醒設定。",
+        "顯示實驗工具", "第 10 階段的實驗控制項刻意留空。後續階段將在此加入明確的邊框、音效、追蹤和持續時間檢測。",
+        "顯示選用的開發檢測。它們不會僅因開啟此分頁而執行。", "未知操作",
+        "重新讀取目前的戰鬥、光環、音效、追蹤和操作阻止狀態。", "清除此工作階段中記錄的上一個 ADDON_ACTION_BLOCKED 事件。這不會隱藏 Lua 錯誤。", "重新掃描目前增益效果，並為符合條件的效果安排到期前十秒提醒。此操作不會播放測試音效。",
+    },
+}
+diagnosticValues.esMX = diagnosticValues.esES
+for locale, values in pairs(diagnosticValues) do
+    for index, key in ipairs(diagnosticKeys) do translations[locale][key] = values[index] end
+end
+
+local awarenessKeys = {
+    "Preview and opt into native debuff-type borders. These controls do not add sounds.", "Enable debuff borders", "Pulse borders",
+    "Change debuff borders after combat.", "Border", "Border and icon", "Corner icon", "Debuff border style",
+    "Cycle through Blizzard-native border, border-and-icon, and corner-icon presentations.", "Preview four types",
+    "Preview debuff borders after combat.", "Debuff border preview shown.", "Debuff awareness", "Disabled", "Not tested",
+    "Choose the Blizzard-native presentation used by live debuffs and the four-type preview.",
+    "Preview Magic, Curse, Disease, and Poison using the selected border style and pulse setting.",
+    "Preview",
+}
+local awarenessValues = {
+    deDE = { "Native Debuff-Rahmen testen und aktivieren. Diese Optionen fügen keine Töne hinzu.", "Debuff-Rahmen aktivieren", "Rahmen pulsieren", "Ändere Debuff-Rahmen nach dem Kampf.", "Rahmen", "Rahmen und Symbol", "Ecksymbol", "Debuff-Rahmenstil", "Wechselt zwischen nativem Rahmen, Rahmen mit Symbol und Ecksymbol.", "Vier Typen testen", "Teste Debuff-Rahmen nach dem Kampf.", "Debuff-Rahmenvorschau angezeigt.", "Debuff-Erkennung", "Deaktiviert", "Nicht getestet", "Wähle die native Darstellung für Live-Debuffs und die Vier-Typen-Vorschau.", "Zeigt Magie, Fluch, Krankheit und Gift mit dem gewählten Rahmenstil und Pulsieren.", "Vorschau" },
+    esES = { "Prueba y activa bordes nativos por tipo de perjuicio. Estos controles no añaden sonidos.", "Activar bordes de perjuicios", "Bordes pulsantes", "Cambia los bordes después del combate.", "Borde", "Borde e icono", "Icono de esquina", "Estilo de borde", "Alterna entre borde nativo, borde con icono e icono de esquina.", "Probar cuatro tipos", "Prueba los bordes después del combate.", "Vista previa de bordes mostrada.", "Detección de perjuicios", "Desactivado", "Sin probar", "Elige la presentación nativa usada por los perjuicios reales y la vista previa.", "Previsualiza Magia, Maldición, Enfermedad y Veneno con el estilo y pulso seleccionados.", "Vista previa" },
+    frFR = { "Testez et activez les bordures natives par type d'affaiblissement. Aucun son n'est ajouté.", "Activer les bordures", "Bordures pulsées", "Modifiez les bordures après le combat.", "Bordure", "Bordure et icône", "Icône d'angle", "Style de bordure", "Parcourt les présentations natives : bordure, bordure et icône, ou icône d'angle.", "Tester quatre types", "Testez les bordures après le combat.", "Aperçu des bordures affiché.", "Détection des affaiblissements", "Désactivé", "Non testé", "Choisissez la présentation native des affaiblissements réels et de l'aperçu.", "Prévisualise Magie, Malédiction, Maladie et Poison avec le style et la pulsation choisis.", "Aperçu" },
+    itIT = { "Prova e attiva i bordi nativi per tipo di penalità. Questi controlli non aggiungono suoni.", "Attiva bordi penalità", "Bordi pulsanti", "Modifica i bordi dopo il combattimento.", "Bordo", "Bordo e icona", "Icona angolare", "Stile bordo penalità", "Alterna bordo nativo, bordo con icona e icona angolare.", "Prova quattro tipi", "Prova i bordi dopo il combattimento.", "Anteprima bordi visualizzata.", "Rilevamento penalità", "Disattivato", "Non provato", "Scegli la presentazione nativa usata dalle penalità reali e dall'anteprima.", "Mostra Magia, Maledizione, Malattia e Veleno con stile e pulsazione selezionati.", "Anteprima" },
+    ptBR = { "Teste e ative bordas nativas por tipo de penalidade. Estes controles não adicionam sons.", "Ativar bordas", "Bordas pulsantes", "Altere as bordas após o combate.", "Borda", "Borda e ícone", "Ícone de canto", "Estilo de borda", "Alterna entre borda nativa, borda com ícone e ícone de canto.", "Testar quatro tipos", "Teste as bordas após o combate.", "Prévia das bordas exibida.", "Detecção de penalidades", "Desativado", "Não testado", "Escolha a apresentação nativa usada pelas penalidades reais e pela prévia.", "Mostra Magia, Maldição, Doença e Veneno com o estilo e pulso selecionados.", "Prévia" },
+    ruRU = { "Проверьте и включите стандартные рамки по типу отрицательного эффекта. Звуки не добавляются.", "Включить рамки", "Пульсация рамок", "Измените рамки после боя.", "Рамка", "Рамка и значок", "Угловой значок", "Стиль рамки", "Переключает стандартную рамку, рамку со значком и угловой значок.", "Проверить четыре типа", "Проверьте рамки после боя.", "Предпросмотр рамок показан.", "Распознавание эффектов", "Отключено", "Не проверено", "Выберите стандартное представление для настоящих эффектов и предпросмотра.", "Показывает магию, проклятие, болезнь и яд с выбранным стилем и пульсацией.", "Предпросмотр" },
+    koKR = { "약화 효과 유형별 기본 테두리를 시험하고 사용합니다. 소리는 추가하지 않습니다.", "약화 효과 테두리 사용", "테두리 맥동", "전투가 끝난 뒤 테두리를 변경하세요.", "테두리", "테두리와 아이콘", "모서리 아이콘", "테두리 스타일", "기본 테두리, 테두리와 아이콘, 모서리 아이콘을 순환합니다.", "네 유형 미리 보기", "전투가 끝난 뒤 테두리를 미리 보세요.", "테두리 미리 보기를 표시했습니다.", "약화 효과 인식", "사용 안 함", "시험 안 함", "실제 약화 효과와 미리 보기에 사용할 기본 표시 방식을 선택합니다.", "선택한 스타일과 맥동으로 마법, 저주, 질병 및 독을 미리 봅니다.", "미리 보기" },
+    zhCN = { "预览并启用原生减益类型边框。这些控件不会添加音效。", "启用减益边框", "边框脉动", "请在战斗结束后更改减益边框。", "边框", "边框和图标", "角落图标", "减益边框样式", "循环切换原生边框、边框和图标以及角落图标。", "预览四种类型", "请在战斗结束后预览减益边框。", "已显示减益边框预览。", "减益识别", "已禁用", "未测试", "选择用于实际减益和四类型预览的原生显示方式。", "使用所选边框样式和脉动预览魔法、诅咒、疾病和中毒。", "预览" },
+    zhTW = { "預覽並啟用原生減益類型邊框。這些控制項不會加入音效。", "啟用減益邊框", "邊框脈動", "請在戰鬥結束後變更減益邊框。", "邊框", "邊框和圖示", "角落圖示", "減益邊框樣式", "循環切換原生邊框、邊框和圖示以及角落圖示。", "預覽四種類型", "請在戰鬥結束後預覽減益邊框。", "已顯示減益邊框預覽。", "減益識別", "已停用", "未測試", "選擇用於實際減益和四類型預覽的原生顯示方式。", "使用所選邊框樣式和脈動預覽魔法、詛咒、疾病和中毒。", "預覽" },
+}
+awarenessValues.esMX = awarenessValues.esES
+for locale, values in pairs(awarenessValues) do
+    for index, key in ipairs(awarenessKeys) do translations[locale][key] = values[index] end
+end
+
+local debuffSoundKeys = {
+    "Debuff sounds", "registered", "learned", "seeded", "Pending combat", "Registration warning",
+    "Enable learned debuff sounds", "Change debuff sounds after combat.", "Debuff sound", "Test sound",
+    "Clear learned", "Clear learned debuffs after combat.", "Learned debuff data cleared.",
+    "Preview debuff borders and configure exact-spell sound alerts learned outside combat.",
+}
+local debuffSoundValues = {
+    deDE = { "Debuff-Töne", "registriert", "gelernt", "vorgegeben", "Wartet auf Kampfende", "Registrierungswarnung", "Gelernte Debuff-Töne aktivieren", "Ändere Debuff-Töne nach dem Kampf.", "Debuff-Ton", "Ton testen", "Gelernte löschen", "Lösche gelernte Debuffs nach dem Kampf.", "Gelernte Debuff-Daten gelöscht.", "Debuff-Rahmen testen und außerhalb des Kampfes gelernte, zauberspezifische Tonwarnungen konfigurieren." },
+    esES = { "Sonidos de perjuicios", "registrados", "aprendidos", "predefinidos", "Pendiente de combate", "Aviso de registro", "Activar sonidos aprendidos", "Cambia los sonidos después del combate.", "Sonido de perjuicio", "Probar sonido", "Borrar aprendidos", "Borra los perjuicios aprendidos después del combate.", "Datos de perjuicios aprendidos borrados.", "Previsualiza bordes y configura alertas por hechizo aprendidas fuera de combate." },
+    frFR = { "Sons d’affaiblissements", "enregistrés", "appris", "prédéfinis", "En attente du combat", "Avertissement d’enregistrement", "Activer les sons appris", "Modifiez les sons après le combat.", "Son d’affaiblissement", "Tester le son", "Effacer les appris", "Effacez les affaiblissements appris après le combat.", "Données apprises effacées.", "Prévisualisez les bordures et configurez les alertes par sort apprises hors combat." },
+    itIT = { "Suoni penalità", "registrati", "appresi", "predefiniti", "In attesa del combattimento", "Avviso di registrazione", "Attiva suoni appresi", "Modifica i suoni dopo il combattimento.", "Suono penalità", "Prova suono", "Cancella appresi", "Cancella le penalità apprese dopo il combattimento.", "Dati appresi cancellati.", "Mostra i bordi e configura gli avvisi per incantesimo appresi fuori dal combattimento." },
+    ptBR = { "Sons de penalidades", "registrados", "aprendidos", "predefinidos", "Pendente de combate", "Aviso de registro", "Ativar sons aprendidos", "Altere os sons após o combate.", "Som de penalidade", "Testar som", "Limpar aprendidos", "Limpe as penalidades aprendidas após o combate.", "Dados aprendidos removidos.", "Visualize as bordas e configure alertas por feitiço aprendidos fora de combate." },
+    ruRU = { "Звуки отрицательных эффектов", "зарегистрировано", "изучено", "предустановлено", "Ожидание конца боя", "Предупреждение регистрации", "Включить звуки изученных эффектов", "Измените звуки после боя.", "Звук эффекта", "Проверить звук", "Очистить изученные", "Очистите изученные эффекты после боя.", "Данные изученных эффектов очищены.", "Проверьте рамки и настройте звуки заклинаний, изученных вне боя." },
+    koKR = { "약화 효과 소리", "등록", "학습", "기본 제공", "전투 종료 대기", "등록 경고", "학습한 약화 효과 소리 사용", "전투가 끝난 뒤 소리를 변경하세요.", "약화 효과 소리", "소리 시험", "학습 목록 지우기", "전투가 끝난 뒤 학습 목록을 지우세요.", "학습한 약화 효과 데이터를 지웠습니다.", "테두리를 미리 보고 전투 밖에서 학습한 주문별 소리 알림을 설정합니다." },
+    zhCN = { "减益音效", "已注册", "已学习", "预置", "等待战斗结束", "注册警告", "启用已学习的减益音效", "请在战斗结束后更改减益音效。", "减益音效", "测试音效", "清除已学习", "请在战斗结束后清除已学习减益。", "已清除学习的减益数据。", "预览减益边框并配置在非战斗状态学习的精确法术音效提醒。" },
+    zhTW = { "減益音效", "已註冊", "已學習", "預設", "等待戰鬥結束", "註冊警告", "啟用已學習的減益音效", "請在戰鬥結束後變更減益音效。", "減益音效", "測試音效", "清除已學習", "請在戰鬥結束後清除已學習減益。", "已清除學習的減益資料。", "預覽減益邊框並設定在非戰鬥狀態學習的精確法術音效提醒。" },
+}
+debuffSoundValues.esMX = debuffSoundValues.esES
+for locale, values in pairs(debuffSoundValues) do
+    for index, key in ipairs(debuffSoundKeys) do translations[locale][key] = values[index] end
+end
+
+local debuffLibraryKeys = {
+    "Debuff Library",
+    "Search the build-matched debuff catalog. Use the check or X to add or remove a Personal Tracker.",
+    "Search by name, type, or Spell ID",
+    "No description is available from this client build.",
+    "Add Personal Tracker", "Remove Personal Tracker",
+    "%d debuffs · build %s", "Unknown", "Unknown source",
+    "Personal tracker data is too large.", "Invalid Personal Tracker data.",
+}
+local debuffLibraryValues = {
+    deDE = { "Debuff-Bibliothek", "Durchsuche den Debuff-Katalog dieses Builds. Mit Haken oder X fügst du einen persönlichen Tracker hinzu oder entfernst ihn.", "Nach Name, Typ oder Zauber-ID suchen", "Für diesen Client-Build ist keine Beschreibung verfügbar.", "Persönlichen Tracker hinzufügen", "Persönlichen Tracker entfernen", "%d Debuffs · Build %s", "Unbekannt", "Unbekannte Quelle", "Die Daten der persönlichen Tracker sind zu groß.", "Ungültige Daten für persönliche Tracker." },
+    esES = { "Biblioteca de perjuicios", "Busca en el catálogo de perjuicios de esta versión. Usa la marca o la X para añadir o quitar un rastreador personal.", "Buscar por nombre, tipo o ID de hechizo", "No hay descripción disponible en esta versión del cliente.", "Añadir rastreador personal", "Quitar rastreador personal", "%d perjuicios · versión %s", "Desconocido", "Fuente desconocida", "Los datos de rastreadores personales son demasiado grandes.", "Datos de rastreadores personales no válidos." },
+    frFR = { "Bibliothèque d’affaiblissements", "Recherchez dans le catalogue de cette version. Utilisez la coche ou le X pour ajouter ou retirer un suivi personnel.", "Rechercher par nom, type ou ID de sort", "Aucune description n’est disponible pour cette version du client.", "Ajouter un suivi personnel", "Retirer le suivi personnel", "%d affaiblissements · version %s", "Inconnu", "Source inconnue", "Les données de suivi personnel sont trop volumineuses.", "Données de suivi personnel non valides." },
+    itIT = { "Libreria penalità", "Cerca nel catalogo delle penalità di questa build. Usa la spunta o la X per aggiungere o rimuovere un tracciamento personale.", "Cerca per nome, tipo o ID incantesimo", "Nessuna descrizione disponibile per questa build del client.", "Aggiungi tracciamento personale", "Rimuovi tracciamento personale", "%d penalità · build %s", "Sconosciuto", "Fonte sconosciuta", "I dati dei tracciamenti personali sono troppo grandi.", "Dati dei tracciamenti personali non validi." },
+    ptBR = { "Biblioteca de penalidades", "Pesquise o catálogo de penalidades desta versão. Use a marca ou o X para adicionar ou remover um rastreador pessoal.", "Pesquisar por nome, tipo ou ID de feitiço", "Nenhuma descrição está disponível para esta versão do cliente.", "Adicionar rastreador pessoal", "Remover rastreador pessoal", "%d penalidades · versão %s", "Desconhecido", "Fonte desconhecida", "Os dados dos rastreadores pessoais são muito grandes.", "Dados de rastreadores pessoais inválidos." },
+    ruRU = { "Библиотека отрицательных эффектов", "Поиск по каталогу отрицательных эффектов этой сборки. Нажмите галочку или X, чтобы добавить или удалить личное отслеживание.", "Поиск по названию, типу или ID заклинания", "Описание недоступно в этой сборке клиента.", "Добавить личное отслеживание", "Удалить личное отслеживание", "%d эффектов · сборка %s", "Неизвестно", "Неизвестный источник", "Данные личного отслеживания слишком велики.", "Недопустимые данные личного отслеживания." },
+    koKR = { "약화 효과 목록", "이 빌드의 약화 효과 목록을 검색합니다. 체크 또는 X를 눌러 개인 추적을 추가하거나 제거하세요.", "이름, 유형 또는 주문 ID로 검색", "이 클라이언트 빌드에서 설명을 확인할 수 없습니다.", "개인 추적 추가", "개인 추적 제거", "약화 효과 %d개 · 빌드 %s", "알 수 없음", "알 수 없는 출처", "개인 추적 데이터가 너무 큽니다.", "개인 추적 데이터가 올바르지 않습니다." },
+    zhCN = { "减益库", "搜索与此版本匹配的减益目录。使用勾选或 X 添加或移除个人追踪。", "按名称、类型或法术 ID 搜索", "此客户端版本没有可用的描述。", "添加个人追踪", "移除个人追踪", "%d 个减益 · 版本 %s", "未知", "未知来源", "个人追踪数据过大。", "个人追踪数据无效。" },
+    zhTW = { "減益資料庫", "搜尋與此版本相符的減益目錄。使用勾選或 X 新增或移除個人追蹤。", "依名稱、類型或法術 ID 搜尋", "此用戶端版本沒有可用的說明。", "新增個人追蹤", "移除個人追蹤", "%d 個減益 · 版本 %s", "未知", "未知來源", "個人追蹤資料過大。", "個人追蹤資料無效。" },
+}
+debuffLibraryValues.esMX = debuffLibraryValues.esES
+for locale, values in pairs(debuffLibraryValues) do
+    for index, key in ipairs(debuffLibraryKeys) do translations[locale][key] = values[index] end
+end
+
+local buffRemovalKeys = {
+    "The ten-second warning remains available outside combat. An optional native sound can play when a learned buff is removed, including during combat.",
+    "Combat buff-removed sound",
+    "Play a Blizzard-native sound when an eligible learned buff is removed. This works during combat but fires after the buff is gone, not ten seconds before.",
+    "Change buff removal sounds after combat.",
+    "Combat buff removal sounds",
+    "Block specific buff spell IDs from triggering expiry or removal alerts.",
+}
+local buffRemovalValues = {
+    deDE = { "Die Zehn-Sekunden-Warnung bleibt außerhalb des Kampfes verfügbar. Ein optionaler nativer Ton kann auch im Kampf abgespielt werden, wenn ein gelernter Stärkungszauber entfernt wird.", "Kampfton bei Buff-Ende", "Spielt einen nativen Blizzard-Ton, wenn ein geeigneter gelernter Stärkungszauber entfernt wird. Dies funktioniert im Kampf, aber erst nachdem der Effekt verschwunden ist, nicht zehn Sekunden vorher.", "Ändere Buff-Endtöne nach dem Kampf.", "Kampftöne bei Buff-Ende", "Blockiert bestimmte Buff-Zauber-IDs für Ablauf- und Entfernungshinweise." },
+    esES = { "El aviso de diez segundos sigue disponible fuera de combate. Un sonido nativo opcional puede sonar cuando se elimina un beneficio aprendido, incluso en combate.", "Sonido al terminar beneficio", "Reproduce un sonido nativo de Blizzard cuando se elimina un beneficio aprendido apto. Funciona en combate, pero suena después de desaparecer, no diez segundos antes.", "Cambia los sonidos de fin de beneficio después del combate.", "Sonidos de fin de beneficio en combate", "Bloquea ID de hechizos de beneficio para alertas de caducidad o eliminación." },
+    frFR = { "L’avertissement à dix secondes reste disponible hors combat. Un son natif facultatif peut être joué lorsqu’une amélioration apprise est retirée, y compris en combat.", "Son de fin d’amélioration", "Joue un son natif de Blizzard lorsqu’une amélioration apprise admissible est retirée. Cela fonctionne en combat, mais après sa disparition, pas dix secondes avant.", "Modifiez les sons de fin d’amélioration après le combat.", "Sons de fin d’amélioration en combat", "Bloque certains ID d’amélioration pour les alertes d’expiration ou de retrait." },
+    itIT = { "L’avviso a dieci secondi resta disponibile fuori dal combattimento. Un suono nativo facoltativo può essere riprodotto quando un beneficio appreso viene rimosso, anche in combattimento.", "Suono fine beneficio", "Riproduce un suono nativo di Blizzard quando un beneficio appreso idoneo viene rimosso. Funziona in combattimento, ma dopo la scomparsa, non dieci secondi prima.", "Modifica i suoni di fine beneficio dopo il combattimento.", "Suoni di fine beneficio in combattimento", "Blocca specifici ID di benefici dagli avvisi di scadenza o rimozione." },
+    ptBR = { "O aviso de dez segundos continua disponível fora de combate. Um som nativo opcional pode tocar quando um bônus aprendido for removido, inclusive em combate.", "Som ao remover bônus", "Toca um som nativo da Blizzard quando um bônus aprendido elegível é removido. Funciona em combate, mas toca depois que o efeito termina, não dez segundos antes.", "Altere os sons de remoção de bônus após o combate.", "Sons de remoção de bônus em combate", "Bloqueia IDs específicos de bônus nos alertas de expiração ou remoção." },
+    ruRU = { "Предупреждение за десять секунд доступно вне боя. Дополнительный системный звук может проигрываться при снятии изученного положительного эффекта, в том числе в бою.", "Звук снятия эффекта в бою", "Проигрывает системный звук Blizzard при снятии подходящего изученного положительного эффекта. Работает в бою, но после исчезновения эффекта, а не за десять секунд.", "Измените звуки снятия эффектов после боя.", "Звуки снятия эффектов в бою", "Блокирует указанные ID положительных эффектов для предупреждений об окончании или снятии." },
+    koKR = { "10초 전 알림은 비전투 중에 계속 사용할 수 있습니다. 학습한 강화 효과가 제거될 때 선택적인 기본 소리를 전투 중에도 재생할 수 있습니다.", "전투 중 강화 효과 제거 소리", "조건에 맞는 학습한 강화 효과가 제거되면 Blizzard 기본 소리를 재생합니다. 전투 중에도 작동하지만 10초 전이 아니라 효과가 사라진 뒤에 재생됩니다.", "전투가 끝난 뒤 강화 효과 제거 소리를 변경하세요.", "전투 중 강화 효과 제거 소리", "특정 강화 효과 주문 ID를 만료 또는 제거 알림에서 제외합니다." },
+    zhCN = { "十秒预警仍可在非战斗状态使用。已学习的增益被移除时，可选择播放原生音效，战斗中也有效。", "战斗中增益移除音效", "符合条件的已学习增益被移除时播放 Blizzard 原生音效。战斗中有效，但会在增益消失后播放，而不是提前十秒。", "请在战斗结束后更改增益移除音效。", "战斗中增益移除音效", "阻止指定增益法术 ID 触发到期或移除提醒。" },
+    zhTW = { "十秒預警仍可在非戰鬥狀態使用。已學習的增益被移除時，可選擇播放原生音效，戰鬥中也有效。", "戰鬥中增益移除音效", "符合條件的已學習增益被移除時播放 Blizzard 原生音效。戰鬥中有效，但會在增益消失後播放，而不是提前十秒。", "請在戰鬥結束後變更增益移除音效。", "戰鬥中增益移除音效", "阻止指定增益法術 ID 觸發到期或移除提醒。" },
+}
+buffRemovalValues.esMX = buffRemovalValues.esES
+for locale, values in pairs(buffRemovalValues) do
+    for index, key in ipairs(buffRemovalKeys) do translations[locale][key] = values[index] end
+end
+
 local selected = "auto"
 local active = GetLocale and GetLocale() or "enUS"
 

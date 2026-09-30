@@ -7,12 +7,100 @@ local playAlertSound
 local fontPath = FBF.FontPath
 local theme = FBF.Theme
 local results = {}
+local awarenessResult = "Not tested"
 local containers = {}
 local holders = {}
 local unlocked = false
 local testMode = false
+local toggleTest
 local untimedSpellIDs = { buffs = {}, debuffs = {} }
 local untimedSignatures = { buffs = "", debuffs = "" }
+local dispelColors = {
+    Magic = { 0.20, 0.60, 1.00 }, Curse = { 0.60, 0.00, 1.00 },
+    Disease = { 0.60, 0.40, 0.00 }, Poison = { 0.00, 0.60, 0.00 },
+}
+local nativeDispelColors = {}
+for kind, color in pairs(dispelColors) do
+    nativeDispelColors[kind] = { r = color[1], g = color[2], b = color[3] }
+end
+
+local function startPulse(region)
+    local group = region:CreateAnimationGroup()
+    group:SetLooping("BOUNCE")
+    local alpha = group:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(1)
+    alpha:SetToAlpha(0.25)
+    alpha:SetDuration(0.65)
+    alpha:SetSmoothing("IN_OUT")
+    group:Play()
+    return group
+end
+
+local function addSolidBorder(button, color, style, pulse, kind, borderThickness, pulseExpansion)
+    local root = CreateFrame("Frame", nil, button)
+    root:SetAllPoints()
+    root:SetFrameLevel(button:GetFrameLevel() + 4)
+    borderThickness = math.max(1, math.min(6, borderThickness or 2))
+    local function makeLayer(expansion, animated)
+        local host = CreateFrame("Frame", nil, root)
+        host:SetPoint("TOPLEFT", button, "TOPLEFT", -expansion, expansion)
+        host:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", expansion, -expansion)
+        if style ~= "icon" then
+        for _, edge in ipairs({
+                { "TOPLEFT", "TOPRIGHT", 0, -borderThickness }, { "BOTTOMLEFT", "BOTTOMRIGHT", 0, borderThickness },
+                { "TOPLEFT", "BOTTOMLEFT", borderThickness, 0 }, { "TOPRIGHT", "BOTTOMRIGHT", -borderThickness, 0 },
+        }) do
+            local texture = host:CreateTexture(nil, "OVERLAY")
+            texture:SetPoint(edge[1]); texture:SetPoint(edge[2])
+            if edge[3] == 0 then texture:SetHeight(math.abs(edge[4])) else texture:SetWidth(math.abs(edge[3])) end
+            texture:SetColorTexture(color[1], color[2], color[3], 1)
+        end
+        end
+        if style ~= "border" then
+        local badge = host:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        badge:SetPoint("TOPRIGHT", 3, 3)
+        badge:SetTextColor(color[1], color[2], color[3])
+        badge:SetShadowColor(0, 0, 0, 1)
+        badge:SetShadowOffset(1, -1)
+        badge:SetText(kind:sub(1, 1))
+        end
+        if animated then host.pulse = startPulse(host) end
+        return host
+    end
+    makeLayer(math.max(0, borderThickness - 2), false)
+    if pulse then root.pulseLayer = makeLayer(pulseExpansion or 4, true) end
+    return root
+end
+
+local function addNativeDispelTexture(button, cfg, expansion, pulse)
+    local styles = Enum and Enum.CustomAuraButtonDispelTypeTextureStyle
+    local style = styles and ({ border = styles.Border, bordericon = styles.BorderWithIcon, icon = styles.Icon })[cfg.debuffBorderStyle]
+    if style == nil then return false end
+    local host = CreateFrame("Frame", nil, button)
+    host:SetPoint("TOPLEFT", button, "TOPLEFT", -expansion, expansion)
+    host:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", expansion, -expansion)
+    host:SetFrameLevel(button:GetFrameLevel() + (pulse and 4 or 3))
+    local texture = host:CreateTexture(nil, "OVERLAY", nil, pulse and 4 or 3)
+    texture:SetAllPoints()
+    local ok = pcall(button.AddDispelTypeTexture, button, texture, {
+        style = style, showWhenHarmful = true, showWhenHelpful = false,
+        customDispelColorMap = nativeDispelColors,
+    })
+    if ok and pulse then host.pulse = startPulse(host) end
+    return ok, host
+end
+
+local function addNativeDispelBorder(button, cfg)
+    if not cfg.debuffAwareness then awarenessResult = "Disabled"; return end
+    if not button.AddDispelTypeTexture then awarenessResult = "Unavailable"; return end
+    local staticExpansion = math.max(0, (cfg.debuffBorderThickness or 2) - 2)
+    local ok = addNativeDispelTexture(button, cfg, staticExpansion, false)
+    awarenessResult = ok and "Available" or "Unavailable"
+    if ok and cfg.debuffPulse then
+        local pulseOK, pulseHost = addNativeDispelTexture(button, cfg, cfg.debuffPulseExpansion or 4, true)
+        if pulseOK then button.fbfDispelPulse = pulseHost and pulseHost.pulse end
+    end
+end
 
 local function styleText(text, button, cfg, timer)
     local face = fontPath(cfg.font)
@@ -45,6 +133,7 @@ local function showTest(holder, cfg)
         local test = CreateFrame("Frame", nil, holder)
         test:SetAllPoints()
         test:SetFrameLevel(holder.container:GetFrameLevel() + 5)
+        test.buttons = {}
         for i = 1, cfg.perRow * cfg.rows do
             local button = CreateFrame(i == 1 and "Button" or "Frame", nil, test)
             button:SetSize(cfg.size, cfg.size)
@@ -58,6 +147,7 @@ local function showTest(holder, cfg)
             local icon = button:CreateTexture(nil, "ARTWORK")
             icon:SetAllPoints()
             icon:SetTexture(134400)
+            test.buttons[i] = button
             local count = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             styleText(count, button, cfg, false)
             count:SetText(tostring((i % 4) + 2))
@@ -122,6 +212,24 @@ local function showTest(holder, cfg)
     holder.test.firstDuration:SetText(L("click"))
     holder.test.firstFlash:Hide()
     holder.test:Show()
+end
+
+local function previewDebuffAwareness(style, pulse, borderThickness, pulseExpansion)
+    if InCombatLockdown() then report(L("Preview debuff borders after combat.")); return end
+    if not testMode then toggleTest() end
+    local holder = holders.debuffs
+    if not holder or not holder.test then return end
+    for _, button in ipairs(holder.test.buttons or {}) do
+        if button.fbfPreviewBorder then button.fbfPreviewBorder:Hide() end
+    end
+    for index, kind in ipairs({ "Magic", "Curse", "Disease", "Poison" }) do
+        local button = holder.test.buttons and holder.test.buttons[index]
+        if button then
+            button.fbfPreviewBorder = addSolidBorder(button, dispelColors[kind], style, pulse, kind,
+                borderThickness or 2, pulseExpansion or 4)
+        end
+    end
+    report(L("Debuff border preview shown."))
 end
 
 local function scanUntimedAuras(kind, filter)
@@ -270,6 +378,7 @@ local function makeContainer(kind, filter)
             local duration = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
             styleText(duration, button, cfg, true)
             button:SetDurationText(duration)
+            if kind == "debuffs" then addNativeDispelBorder(button, getProfile()) end
         end,
     }
     if sort[1] then
@@ -342,7 +451,7 @@ local function setUnlocked(value)
     report(L(unlocked and "Bars unlocked; drag a bar or its label to move it." or "Bars locked."))
 end
 
-local function toggleTest()
+toggleTest = function()
     if InCombatLockdown() then
         report(L("Toggle test icons after combat."))
         return
@@ -378,5 +487,7 @@ function FBF.AuraFrames.Create(profileProvider, reporter, soundPlayer)
         Supports = function(kind) return filters[kind] ~= nil end,
         GetContainer = function(kind) return containers[kind] end,
         GetResult = function(kind) return results[kind] end,
+        GetAwarenessResult = function() return awarenessResult end,
+        PreviewDebuffAwareness = previewDebuffAwareness,
     }
 end

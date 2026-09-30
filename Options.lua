@@ -21,13 +21,20 @@ local applyStockVisibility = context.ApplyStockVisibility
 local build = context.AuraFrames.Build
 local setUnlocked = context.AuraFrames.SetUnlocked
 local toggleTest = context.AuraFrames.ToggleTest
+local previewDebuffAwareness = context.AuraFrames.PreviewDebuffAwareness
 local auraFrames = context.AuraFrames
 local alerts = context.Alerts
+local debuffSounds = context.DebuffSounds
+local buffRemovalSounds = context.BuffRemovalSounds or {}
 local handleAlertCommand = alerts.Handle
+local getDiagnosticState = context.GetDiagnosticState or function() return {} end
+local clearDiagnosticState = context.ClearDiagnosticState or function() end
 local configFrame
 local selectedKind = "buffs"
 local selectedTab = "buffs"
 local selectedSection = "layout"
+local debuffPageState = {}
+local buffAlertDetail = false
 local refreshConfig
 
 local numericSettings = {
@@ -105,8 +112,12 @@ local function fitConfigButton(frame)
     end
     measured = measured or label:GetStringWidth()
     local padding = frame.selectorArrow and 52 or 26
-    frame:SetWidth(math.max(base[1], math.ceil(measured) + padding))
-    frame:SetHeight(math.max(base[2], math.ceil(label:GetStringHeight()) + 10))
+    local wantedWidth = math.max(base[1], math.ceil(measured) + padding)
+    local wantedHeight = math.max(base[2], math.ceil(label:GetStringHeight()) + 10)
+    local maxWidth = frame.autoFitMaxWidth or math.max(base[1], 360)
+    local maxHeight = frame.autoFitMaxHeight or math.max(base[2], 48)
+    frame:SetWidth(math.min(wantedWidth, maxWidth))
+    frame:SetHeight(math.min(wantedHeight, maxHeight))
 end
 
 local function applyConfigTextSize(root, extraSize)
@@ -176,6 +187,15 @@ local function fitLocalizedWindow(r, textExpansion)
         25 + r.copyBackup:GetWidth() + 12 + r.restoreBackup:GetWidth() + 25,
         25 + r.languageButton:GetWidth() + 25,
         25 + r.applyLanguage:GetWidth() + 25)
+    if r.diagnosticTestRow then
+        local leftWidth = math.max(310, r.diagnosticTestRow[1]:GetWidth() + 8 + r.diagnosticTestRow[2]:GetWidth())
+        local rightWidth = math.max(320, r.diagnosticStatusRow[1]:GetWidth() + 8 + r.diagnosticStatusRow[2]:GetWidth())
+        contentWidth = math.max(contentWidth, 25 + leftWidth + 25 + rightWidth + 25,
+            25 + r.diagnosticReportRow[1]:GetWidth() + 8 + r.diagnosticReportRow[2]:GetWidth() + 25)
+        r.diagnosticStatusHeading:ClearAllPoints()
+        r.diagnosticStatusHeading:SetPoint("TOPLEFT", 25 + leftWidth + 25, -168)
+        r.diagnosticTestHelp:SetWidth(leftWidth)
+    end
     r.sidebar:SetWidth(navigationWidth)
     for _, tab in pairs(r.tabs) do tab:SetWidth(navigationWidth - 6) end
     r.frame:SetSize(navigationWidth + 12 + contentWidth, 720 + textExpansion * 8)
@@ -187,6 +207,8 @@ local function fitLocalizedWindow(r, textExpansion)
     r.generalHelp:SetWidth(math.max(1, contentWidth - 50))
     r.profileHelp:SetWidth(math.max(1, contentWidth - 50))
     r.languageHelp:SetWidth(math.max(1, contentWidth - 50))
+    if r.diagnosticsHelp then r.diagnosticsHelp:SetWidth(math.max(1, contentWidth - 50)) end
+    if r.diagnosticReport then r.diagnosticReport:SetWidth(math.max(1, contentWidth - 60)) end
 end
 
 local function applySetting(key, value)
@@ -209,9 +231,14 @@ local function mediaChoices(kind)
     else
         choices[1] = { value = "none", label = L("None") }
         for _, entry in ipairs(builtinSounds) do
-            if type(entry[3]) == "number" or (SOUNDKIT and SOUNDKIT[entry[3]]) then
+            local fileBacked = type(entry[3]) == "string"
+                and (entry[3]:find("\\", 1, true) or entry[3]:find("/", 1, true))
+            if type(entry[3]) == "number" or fileBacked or (SOUNDKIT and SOUNDKIT[entry[3]]) then
                 choices[#choices + 1] = { value = entry[1], label = L(entry[2]) }
             end
+        end
+        for label, path in pairs(getProfile().customSounds or {}) do
+            choices[#choices + 1] = { value = "file:" .. path, label = label }
         end
     end
     local media = sharedMedia()
@@ -224,7 +251,7 @@ local function mediaChoices(kind)
 end
 
 local mediaPicker
-local function openMediaPicker(kind, current, onPick, owner)
+local function openMediaPicker(kind, current, onPick, owner, choiceFilter)
     if not mediaPicker then
         local frame = CreateFrame("Frame", "ForeverBuffFramesMediaPicker", UIParent, "BackdropTemplate")
         frame:SetSize(370, 430)
@@ -260,7 +287,8 @@ local function openMediaPicker(kind, current, onPick, owner)
             local query = self.search:GetText():lower()
             local shown = 0
             for _, choice in ipairs(mediaChoices(self.kind)) do
-                if query == "" or choice.label:lower():find(query, 1, true) then
+                if (not self.choiceFilter or self.choiceFilter(choice))
+                    and (query == "" or choice.label:lower():find(query, 1, true)) then
                     shown = shown + 1
                     local row = self.rows[shown]
                     if not row then
@@ -327,6 +355,7 @@ local function openMediaPicker(kind, current, onPick, owner)
     mediaPicker.kind = kind
     mediaPicker.current = current
     mediaPicker.onPick = onPick
+    mediaPicker.choiceFilter = choiceFilter
     mediaPicker.inline = owner and true or false
     mediaPicker:SetParent(owner and configFrame or UIParent)
     mediaPicker:ClearAllPoints()
@@ -392,6 +421,8 @@ local function activateProfile(name)
     end
     applyStockVisibility()
     handleAlertCommand(getProfile().expirationSounds and "on" or "off")
+    if debuffSounds then debuffSounds.Sync() end
+    if buffRemovalSounds.Sync then buffRemovalSounds.Sync() end
     if refreshConfig then refreshConfig() end
     report(L("Profile selected: %s", name))
     return true
@@ -438,6 +469,18 @@ local function makeConfig()
     local alertsPanel = CreateFrame("Frame", nil, frame)
     alertsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
     alertsPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    local debuffAlertsPanel = CreateFrame("Frame", nil, frame)
+    debuffAlertsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
+    debuffAlertsPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    local debuffAppearancePanel = CreateFrame("Frame", nil, frame)
+    debuffAppearancePanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
+    debuffAppearancePanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    local debuffLibraryPanel = CreateFrame("Frame", nil, frame)
+    debuffLibraryPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
+    debuffLibraryPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    debuffPageState.sounds = debuffAlertsPanel
+    debuffPageState.appearance = debuffAppearancePanel
+    debuffPageState.library = debuffLibraryPanel
     local profilesPanel = CreateFrame("Frame", nil, frame)
     profilesPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
     profilesPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
@@ -447,7 +490,17 @@ local function makeConfig()
     local languagePanel = CreateFrame("Frame", nil, frame)
     languagePanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
     languagePanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    local contentPanels = { layoutPanel, generalPanel, alertsPanel, profilesPanel, recoveryPanel, languagePanel }
+    local diagnosticsPanel = CreateFrame("Frame", nil, frame)
+    diagnosticsPanel:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
+    diagnosticsPanel:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    local contentPanels = { layoutPanel, generalPanel, alertsPanel, debuffAlertsPanel, debuffAppearancePanel, debuffLibraryPanel, profilesPanel, recoveryPanel, languagePanel, diagnosticsPanel }
+    contentPanels.layout = layoutPanel
+    contentPanels.general = generalPanel
+    contentPanels.alerts = alertsPanel
+    contentPanels.profiles = profilesPanel
+    contentPanels.recovery = recoveryPanel
+    contentPanels.language = languagePanel
+    contentPanels.diagnostics = diagnosticsPanel
     local alertLeft = CreateFrame("Frame", nil, alertsPanel)
     alertLeft:SetPoint("TOPLEFT", 15, -105)
     alertLeft:SetSize(390, 560)
@@ -497,10 +550,10 @@ local function makeConfig()
     end
     local tabLabels = {
         general = "General", buffs = "Buffs", debuffs = "Debuffs", alerts = "Alerts",
-        profiles = "Profiles", recovery = "Backup / Recovery", language = "Language",
+        profiles = "Profiles", recovery = "Backup / Recovery", language = "Language", diagnostics = "Diagnostics",
     }
     local tabs = {}
-    for index, kind in ipairs({ "general", "buffs", "debuffs", "alerts", "profiles", "recovery", "language" }) do
+    for index, kind in ipairs({ "general", "buffs", "debuffs", "alerts", "profiles", "recovery", "language", "diagnostics" }) do
         local tab = CreateFrame("Button", nil, frame)
         tab:SetSize(126, 30)
         tab:SetPoint("TOPLEFT", 14, -58 - (index - 1) * 36)
@@ -515,17 +568,574 @@ local function makeConfig()
             dismissTransientUI()
             selectedTab = kind
             if kind == "buffs" or kind == "debuffs" then selectedKind = kind end
+            if kind == "debuffs" then debuffPageState.current = nil end
+            if kind == "alerts" then buffAlertDetail = false end
             refreshConfig()
         end)
-        local tabTitle = kind == "language" and L("Language settings") or (kind == "general" and "General settings" or (kind == "recovery" and "Backup / Recovery" or (kind == "profiles" and "Profiles" or (kind == "alerts" and "Alert settings" or (kind == "buffs" and "Buff settings" or "Debuff settings")))))
+        local tabTitle = kind == "diagnostics" and L("Diagnostics") or (kind == "language" and L("Language settings") or (kind == "general" and "General settings" or (kind == "recovery" and "Backup / Recovery" or (kind == "profiles" and "Profiles" or (kind == "alerts" and "Alert settings" or (kind == "buffs" and "Buff settings" or "Debuff settings"))))))
         local tabHelp = kind == "recovery" and "Save all profiles or restore them if the beta forgets them."
             or (kind == "profiles" and "Create, copy, rename, delete, and select named settings profiles."
             or (kind == "general" and "Configure the settings window and shared display choices."
+            or (kind == "diagnostics" and "Preview existing effects and collect a compact support report."
             or (kind == "language" and "Choose the automatic client language or override it to test a translation."
-            or (kind == "alerts" and "Configure ten-second warnings and their blacklist." or "Configure this bar independently from the other bar."))))
+            or (kind == "alerts" and "Configure ten-second warnings and their blacklist." or "Configure this bar independently from the other bar.")))))
         tooltip(tab, L(tabTitle), L(tabHelp))
         tabs[kind] = tab
     end
+
+    local function returnToDebuffs()
+        dismissTransientUI()
+        debuffPageState.current = nil
+        refreshConfig()
+    end
+    local function makeDebuffBackButton(parent)
+        local button = CreateFrame("Button", nil, parent, "UIPanelButtonTemplate")
+        button:SetSize(145, 24)
+        button:SetPoint("TOPLEFT", 25, -82)
+        button:SetText(L("Back to Debuffs"))
+        button:SetScript("OnClick", returnToDebuffs)
+        return button
+    end
+    local debuffNavButtons = {}
+    local openCustomTrackerEditor
+    local debuffDestinations = {
+        { "sounds", "Sound Alerts" }, { "appearance", "Appearance" },
+        { "library", "Debuff Library" }, { "trackers", "Personal Trackers" },
+    }
+    for index, spec in ipairs(debuffDestinations) do
+        local button = CreateFrame("Button", nil, layoutPanel, "UIPanelButtonTemplate")
+        local column = (index - 1) % 2
+        local row = math.floor((index - 1) / 2)
+        button:SetSize(250, 27)
+        button.autoFitMaxWidth = 250
+        -- Keep the nested Debuff pages in their own two-row block above the
+        -- existing test/move/reset toolbar at the bottom of this panel.
+        button:SetPoint("BOTTOMLEFT", 25 + column * 335, 94 - row * 36)
+        button:SetText(L(spec[2]))
+        button:SetScript("OnClick", function()
+            dismissTransientUI()
+            if spec[1] == "trackers" then
+                openCustomTrackerEditor()
+            else
+                debuffPageState.current = spec[1]
+                refreshConfig()
+            end
+        end)
+        debuffNavButtons[index] = button
+    end
+    debuffPageState.navigation = debuffNavButtons
+
+    local debuffAlertHeading = debuffAlertsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    debuffAlertHeading:SetPoint("TOPLEFT", 25, -120)
+    debuffAlertHeading:SetText(L("Sound Alerts"))
+    theme.StyleSectionHeading(debuffAlertHeading)
+    makeDebuffBackButton(debuffAlertsPanel)
+    local debuffAlertHelp = debuffAlertsPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    debuffAlertHelp:SetPoint("TOPLEFT", debuffAlertHeading, "BOTTOMLEFT", 0, -10)
+    debuffAlertHelp:SetWidth(650)
+    debuffAlertHelp:SetJustifyH("LEFT")
+    debuffAlertHelp:SetText(L("Play combat-safe sounds for known Magic, Curse, Disease, and Poison spell IDs. Registrations are prepared outside combat."))
+    local debuffAlertEnable = CreateFrame("CheckButton", nil, debuffAlertsPanel, "UICheckButtonTemplate")
+    debuffAlertEnable:SetPoint("TOPLEFT", debuffAlertHelp, "BOTTOMLEFT", 0, -12)
+    debuffAlertEnable.textLabel = debuffAlertEnable:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    debuffAlertEnable.textLabel:SetPoint("LEFT", debuffAlertEnable, "RIGHT", 2, 0)
+    debuffAlertEnable.textLabel:SetText(L("Enable debuff alert sounds"))
+    local debuffAlertStatus = debuffAlertsPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    debuffAlertStatus:SetPoint("TOPLEFT", debuffAlertEnable, "BOTTOMLEFT", 4, -8)
+    debuffAlertStatus:SetWidth(650)
+    debuffAlertStatus:SetJustifyH("LEFT")
+    local personalTrackersButton = CreateFrame("Button", nil, debuffAlertsPanel, "UIPanelButtonTemplate")
+    personalTrackersButton:SetSize(175, 24)
+    personalTrackersButton:SetPoint("TOPRIGHT", debuffAlertsPanel, "TOPRIGHT", -35, -105)
+    personalTrackersButton:SetText(L("Personal trackers"))
+    personalTrackersButton:Hide()
+    local debuffSoundControls = {}
+    local debuffKinds = { "Magic", "Curse", "Disease", "Poison" }
+    local function combatSoundChoice(choice)
+        return choice.value == "none" or choice.value == "default"
+            or type(soundSource(choice.value)) == "string"
+    end
+    local function debuffSoundLabel(value)
+        if type(value) == "string" and value:sub(1, 5) == "file:" then
+            return value:sub(6):match("([^\\]+)$") or value:sub(6)
+        end
+        for _, choice in ipairs(mediaChoices("sound")) do
+            if choice.value == value then return L(choice.label) end
+        end
+        return value or L("None")
+    end
+    local function setDebuffSound(kind, value)
+        if InCombatLockdown() then report(L("Change debuff sounds after combat.")); return false end
+        getProfile().debuffSounds[kind] = value
+        getProfile()["debuffSound" .. kind] = value
+        debuffSounds.Sync()
+        return true
+    end
+    local customTrackerEditor, refreshCustomTrackerEditor
+    openCustomTrackerEditor = function()
+        if not customTrackerEditor then
+            local editor = CreateFrame("Frame", nil, frame)
+            customTrackerEditor = editor
+            debuffPageState.trackers = editor
+            editor:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
+            editor:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+            makeDebuffBackButton(editor)
+            editor.title = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+            editor.title:SetPoint("TOPLEFT", 25, -120)
+            editor.title:SetText(L("Personal debuff trackers"))
+            theme.StyleSectionHeading(editor.title)
+            editor.help = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            editor.help:SetPoint("TOPLEFT", editor.title, "BOTTOMLEFT", 0, -8)
+            editor.help:SetWidth(560)
+            editor.help:SetJustifyH("LEFT")
+            editor.help:SetText(L("Add an exact debuff Spell ID with its own name and combat-safe sound. Personal entries override learned and seeded sounds."))
+            local function fieldLabel(text, x, width)
+                local label = editor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                label:SetPoint("TOPLEFT", x, -182)
+                label:SetWidth(width)
+                label:SetJustifyH("LEFT")
+                label:SetText(L(text))
+                return label
+            end
+            fieldLabel("Spell ID", 22, 105)
+            fieldLabel("Custom name", 137, 220)
+            fieldLabel("Sound", 367, 225)
+            editor.spellID = CreateFrame("EditBox", nil, editor, "InputBoxTemplate")
+            editor.spellID:SetSize(105, 24)
+            editor.spellID:SetPoint("TOPLEFT", 22, -200)
+            editor.spellID:SetNumeric(true)
+            editor.spellID:SetMaxLetters(10)
+            editor.spellID:SetAutoFocus(false)
+            theme.StyleInput(editor.spellID)
+            editor.name = CreateFrame("EditBox", nil, editor, "InputBoxTemplate")
+            editor.name:SetSize(220, 24)
+            editor.name:SetPoint("TOPLEFT", 137, -200)
+            editor.name:SetMaxLetters(80)
+            editor.name:SetAutoFocus(false)
+            theme.StyleInput(editor.name)
+            editor.sound = "default"
+            editor.soundButton = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
+            editor.soundButton:SetSize(225, 24)
+            editor.soundButton:SetPoint("TOPLEFT", 367, -200)
+            decorateSelector(editor.soundButton)
+            editor.soundButton:SetScript("OnClick", function()
+                openMediaPicker("sound", editor.sound, function(value)
+                    editor.sound = value
+                    editor.soundButton:SetText(debuffSoundLabel(value))
+                end, editor.soundButton, combatSoundChoice)
+            end)
+            editor.enabled = CreateFrame("CheckButton", nil, editor, "UICheckButtonTemplate")
+            editor.enabled:SetPoint("TOPLEFT", 18, -237)
+            editor.enabled.textLabel = editor.enabled:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            editor.enabled.textLabel:SetPoint("LEFT", editor.enabled, "RIGHT", 2, 0)
+            editor.enabled.textLabel:SetText(L("Enabled"))
+            editor.save = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
+            editor.save:SetSize(120, 24)
+            editor.save:SetPoint("TOPLEFT", 137, -240)
+            editor.save:SetText(L("Add tracker"))
+            editor.clear = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
+            editor.clear:SetSize(95, 24)
+            editor.clear:SetPoint("LEFT", editor.save, "RIGHT", 8, 0)
+            editor.clear:SetText(L("Clear"))
+            editor.pageText = editor:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            editor.pageText:SetPoint("TOPRIGHT", -22, -247)
+            editor.page = 1
+
+            local function clearEditor()
+                editor.editingID = nil
+                editor.spellID:SetText("")
+                editor.spellID:Enable()
+                editor.name:SetText("")
+                editor.sound = "default"
+                editor.soundButton:SetText(debuffSoundLabel(editor.sound))
+                editor.enabled:SetChecked(true)
+                editor.save:SetText(L("Add tracker"))
+            end
+            editor.clear:SetScript("OnClick", clearEditor)
+            editor.save:SetScript("OnClick", function()
+                if InCombatLockdown() then report(L("Change debuff sounds after combat.")); return end
+                local spellID = tonumber(editor.spellID:GetText())
+                local name = editor.name:GetText():match("^%s*(.-)%s*$")
+                if not spellID or spellID < 1 or spellID % 1 ~= 0 then report(L("Enter a valid Spell ID.")); return end
+                if name == "" then report(L("Enter a custom name.")); return end
+                local trackers = getProfile().customDebuffTrackers
+                if editor.editingID and editor.editingID ~= spellID then trackers[editor.editingID] = nil end
+                trackers[spellID] = { name = name, sound = editor.sound, enabled = editor.enabled:GetChecked() and true or false }
+                debuffSounds.Sync()
+                clearEditor()
+                refreshCustomTrackerEditor()
+                refreshConfig()
+            end)
+
+            editor.rows = {}
+            for index = 1, 7 do
+                local row = CreateFrame("Frame", nil, editor, "BackdropTemplate")
+                row:SetSize(576, 40)
+                row:SetPoint("TOPLEFT", 22, -280 - (index - 1) * 43)
+                row:SetBackdrop({ bgFile = "Interface\\ChatFrame\\ChatFrameBackground", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 8, insets = { left = 2, right = 2, top = 2, bottom = 2 } })
+                row:SetBackdropColor(unpack(theme.raised))
+                row:SetBackdropBorderColor(unpack(theme.border))
+                row.toggle = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+                row.toggle:SetPoint("LEFT", 4, 0)
+                row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+                row.text:SetPoint("LEFT", 39, 0)
+                row.text:SetWidth(335)
+                row.text:SetJustifyH("LEFT")
+                row.edit = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                row.edit:SetSize(78, 22)
+                row.edit:SetPoint("RIGHT", -94, 0)
+                row.edit:SetText(L("Edit"))
+                row.remove = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+                row.remove:SetSize(82, 22)
+                row.remove:SetPoint("RIGHT", -7, 0)
+                row.remove:SetText(L("Remove"))
+                editor.rows[index] = row
+            end
+            editor.previous = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
+            editor.previous:SetSize(90, 22)
+            editor.previous:SetPoint("BOTTOMLEFT", 22, 18)
+            editor.previous:SetText(L("Previous"))
+            editor.next = CreateFrame("Button", nil, editor, "UIPanelButtonTemplate")
+            editor.next:SetSize(90, 22)
+            editor.next:SetPoint("LEFT", editor.previous, "RIGHT", 8, 0)
+            editor.next:SetText(L("Next"))
+            editor.previous:SetScript("OnClick", function() editor.page = math.max(1, editor.page - 1); refreshCustomTrackerEditor() end)
+            editor.next:SetScript("OnClick", function() editor.page = editor.page + 1; refreshCustomTrackerEditor() end)
+
+            refreshCustomTrackerEditor = function()
+                local entries = {}
+                for spellID, tracker in pairs(getProfile().customDebuffTrackers or {}) do
+                    entries[#entries + 1] = { id = spellID, tracker = tracker }
+                end
+                table.sort(entries, function(a, b) return a.id < b.id end)
+                local pages = math.max(1, math.ceil(#entries / #editor.rows))
+                editor.page = math.min(editor.page, pages)
+                editor.pageText:SetText(string.format(L("Page %d of %d"), editor.page, pages))
+                editor.previous:SetEnabled(editor.page > 1)
+                editor.next:SetEnabled(editor.page < pages)
+                local first = (editor.page - 1) * #editor.rows
+                for index, row in ipairs(editor.rows) do
+                    local entry = entries[first + index]
+                    row:SetShown(entry ~= nil)
+                    if entry then
+                        local tracker, spellID = entry.tracker, entry.id
+                        row.toggle:SetChecked(tracker.enabled ~= false)
+                        row.text:SetText(tostring(spellID) .. "  " .. tracker.name .. "  —  " .. debuffSoundLabel(tracker.sound))
+                        row.toggle:SetScript("OnClick", function(self)
+                            if InCombatLockdown() then self:SetChecked(tracker.enabled ~= false); report(L("Change debuff sounds after combat.")); return end
+                            tracker.enabled = self:GetChecked() and true or false
+                            debuffSounds.Sync(); refreshConfig()
+                        end)
+                        row.edit:SetScript("OnClick", function()
+                            editor.editingID = spellID
+                            editor.spellID:SetText(spellID)
+                            editor.spellID:Disable()
+                            editor.name:SetText(tracker.name)
+                            editor.sound = tracker.sound
+                            editor.soundButton:SetText(debuffSoundLabel(editor.sound))
+                            editor.enabled:SetChecked(tracker.enabled ~= false)
+                            editor.save:SetText(L("Update tracker"))
+                        end)
+                        row.remove:SetScript("OnClick", function()
+                            if InCombatLockdown() then report(L("Change debuff sounds after combat.")); return end
+                            getProfile().customDebuffTrackers[spellID] = nil
+                            debuffSounds.Sync(); refreshCustomTrackerEditor(); refreshConfig()
+                        end)
+                    end
+                end
+            end
+            debuffPageState.refreshTrackers = refreshCustomTrackerEditor
+            editor:SetScript("OnShow", function() clearEditor(); refreshCustomTrackerEditor() end)
+            editor:Hide()
+        end
+        debuffPageState.current = "trackers"
+        refreshConfig()
+        refreshCustomTrackerEditor()
+    end
+    personalTrackersButton:SetScript("OnClick", openCustomTrackerEditor)
+    tooltip(personalTrackersButton, L("Personal trackers"), L("Add exact Spell IDs with custom names and individual sounds."))
+
+    makeDebuffBackButton(debuffLibraryPanel)
+    local libraryHeading = debuffLibraryPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    libraryHeading:SetPoint("TOPLEFT", 25, -120)
+    libraryHeading:SetText(L("Debuff Library"))
+    theme.StyleSectionHeading(libraryHeading)
+    local libraryHelp = debuffLibraryPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    libraryHelp:SetPoint("TOPLEFT", libraryHeading, "BOTTOMLEFT", 0, -8)
+    libraryHelp:SetWidth(640)
+    libraryHelp:SetJustifyH("LEFT")
+    libraryHelp:SetText(L("Search the build-matched debuff catalog. Use the check or X to add or remove a Personal Tracker."))
+
+    local librarySearch = CreateFrame("EditBox", nil, debuffLibraryPanel, "InputBoxTemplate")
+    librarySearch:SetSize(390, 25)
+    librarySearch:SetPoint("TOPLEFT", libraryHelp, "BOTTOMLEFT", 0, -14)
+    librarySearch:SetAutoFocus(false)
+    librarySearch:SetMaxLetters(80)
+    theme.StyleInput(librarySearch)
+    local librarySearchLabel = debuffLibraryPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    librarySearchLabel:SetPoint("BOTTOMLEFT", librarySearch, "TOPLEFT", 2, 3)
+    librarySearchLabel:SetText(L("Search by name, type, or Spell ID"))
+    local libraryCount = debuffLibraryPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    libraryCount:SetPoint("LEFT", librarySearch, "RIGHT", 14, 0)
+    libraryCount:SetWidth(225)
+    libraryCount:SetJustifyH("RIGHT")
+
+    local libraryScroll = CreateFrame("ScrollFrame", nil, debuffLibraryPanel, "UIPanelScrollFrameTemplate")
+    libraryScroll:SetPoint("TOPLEFT", 25, -225)
+    libraryScroll:SetPoint("BOTTOMRIGHT", -42, 28)
+    local libraryChild = CreateFrame("Frame", nil, libraryScroll)
+    libraryChild:SetWidth(620)
+    libraryChild:SetHeight(1)
+    libraryScroll:SetScrollChild(libraryChild)
+    local libraryRows = {}
+    local libraryInfoCache = {}
+    local libraryTooltipScanner
+    local refreshDebuffLibrary
+
+    local function tooltipSpellDescription(spellID, spellName)
+        if C_TooltipInfo and C_TooltipInfo.GetSpellByID then
+            local ok, data = pcall(C_TooltipInfo.GetSpellByID, spellID)
+            if ok and type(data) == "table" and type(data.lines) == "table" then
+                for index = #data.lines, 2, -1 do
+                    local line = data.lines[index]
+                    local value = line and (line.leftText or line.rightText)
+                    if type(value) == "string" and value ~= "" and value ~= spellName then
+                        return value
+                    end
+                end
+            end
+        end
+
+        if not libraryTooltipScanner then
+            libraryTooltipScanner = CreateFrame("GameTooltip", "ForeverBuffFramesLibraryTooltipScanner", UIParent, "GameTooltipTemplate")
+            libraryTooltipScanner:SetOwner(UIParent, "ANCHOR_NONE")
+        end
+        libraryTooltipScanner:ClearLines()
+        local ok = pcall(libraryTooltipScanner.SetSpellByID, libraryTooltipScanner, spellID)
+        if ok then
+            for index = libraryTooltipScanner:NumLines(), 2, -1 do
+                local line = _G["ForeverBuffFramesLibraryTooltipScannerTextLeft" .. index]
+                local value = line and line:GetText()
+                if type(value) == "string" and value ~= "" and value ~= spellName then
+                    return value
+                end
+            end
+        end
+    end
+
+    local function librarySpellInfo(spellID, entry)
+        local cached = libraryInfoCache[spellID]
+        if cached then return cached.name, cached.icon, cached.description end
+        local name, icon, description = entry.name, entry.icon, entry.description
+        if C_Spell then
+            if C_Spell.GetSpellInfo then
+                local ok, info = pcall(C_Spell.GetSpellInfo, spellID)
+                if ok and type(info) == "table" then
+                    if type(info.name) == "string" and info.name ~= "" then name = info.name end
+                    if type(info.iconID) == "number" then icon = info.iconID end
+                end
+            end
+            if C_Spell.GetSpellTexture then
+                local ok, value = pcall(C_Spell.GetSpellTexture, spellID)
+                if ok and value then icon = value end
+            end
+            if C_Spell.GetSpellDescription then
+                local ok, value = pcall(C_Spell.GetSpellDescription, spellID)
+                if ok and type(value) == "string" and value ~= "" then description = value end
+            end
+        end
+        description = tooltipSpellDescription(spellID, name) or description
+        cached = {
+            name = name or (L("Spell") .. " " .. tostring(spellID)),
+            icon = icon or 134400,
+            description = description or L("No description is available from this client build."),
+        }
+        libraryInfoCache[spellID] = cached
+        return cached.name, cached.icon, cached.description
+    end
+
+    local function makeLibraryRow(index)
+        local row = CreateFrame("Frame", nil, libraryChild, "BackdropTemplate")
+        row:SetSize(615, 66)
+        row:SetPoint("TOPLEFT", 0, -(index - 1) * 70)
+        row:SetBackdrop({ bgFile = "Interface\\ChatFrame\\ChatFrameBackground", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 9, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        row:SetBackdropColor(unpack(theme.raised))
+        row:SetBackdropBorderColor(unpack(theme.border))
+        row:EnableMouse(true)
+        row.icon = row:CreateTexture(nil, "ARTWORK")
+        row.icon:SetSize(40, 40)
+        row.icon:SetPoint("LEFT", 10, 0)
+        row.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        row.name = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.name:SetPoint("TOPLEFT", row.icon, "TOPRIGHT", 10, -7)
+        row.name:SetWidth(425)
+        row.name:SetJustifyH("LEFT")
+        row.description = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.description:SetPoint("TOPLEFT", row.name, "BOTTOMLEFT", 0, -4)
+        row.description:SetWidth(500)
+        row.description:SetHeight(28)
+        row.description:SetJustifyH("LEFT")
+        row.description:SetJustifyV("TOP")
+        row.toggle = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.toggle:SetSize(42, 30)
+        row.toggle.autoFitMaxWidth = 42
+        row.toggle.autoFitMaxHeight = 30
+        row.toggle:SetPoint("RIGHT", -12, 0)
+        row.toggle.owner = row
+        row.toggle.check = row.toggle:CreateTexture(nil, "OVERLAY")
+        row.toggle.check:SetSize(22, 22)
+        row.toggle.check:SetPoint("CENTER")
+        row.toggle.check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        row.toggle.check:SetVertexColor(0.45, 1, 0.45)
+        row.toggle:SetScript("OnClick", function(self)
+            if InCombatLockdown() then report(L("Change debuff sounds after combat.")); return end
+            local owner = self.owner
+            local trackers = getProfile().customDebuffTrackers
+            if trackers[owner.spellID] then
+                trackers[owner.spellID] = nil
+            else
+                trackers[owner.spellID] = { name = owner.spellName, sound = "default", enabled = true }
+            end
+            debuffSounds.Sync()
+            refreshDebuffLibrary()
+            if debuffPageState.refreshTrackers then debuffPageState.refreshTrackers() end
+        end)
+        row.toggle:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L(getProfile().customDebuffTrackers[self.owner.spellID] and "Remove Personal Tracker" or "Add Personal Tracker"))
+            GameTooltip:Show()
+        end)
+        row.toggle:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(self.spellName or L("Debuff"))
+            GameTooltip:AddLine(L("%s · Spell ID %d", self.spellKind or L("Unknown"), self.spellID or 0), 0.72, 0.61, 0.45)
+            GameTooltip:AddLine(self.spellDescription or L("No description is available from this client build."), 1, 1, 1, true)
+            GameTooltip:AddLine((FBF.DebuffSoundLibrary and FBF.DebuffSoundLibrary.source) or L("Unknown source"), 0.55, 0.75, 1, true)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", function() GameTooltip:Hide() end)
+        libraryRows[index] = row
+        return row
+    end
+
+    refreshDebuffLibrary = function()
+        local catalog = FBF.DebuffSoundLibrary and FBF.DebuffSoundLibrary.entries or {}
+        local query = librarySearch:GetText():lower():match("^%s*(.-)%s*$")
+        local matches = {}
+        local eligible = FBF.DebuffSoundLibrary and FBF.DebuffSoundLibrary.catalogEligible
+        for spellID, entry in pairs(catalog) do
+            if not eligible or eligible[spellID] then
+            local name, icon, description = librarySpellInfo(spellID, entry)
+            local haystack = (name .. " " .. entry.kind .. " " .. tostring(spellID) .. " " .. description):lower()
+            if query == "" or haystack:find(query, 1, true) then
+                matches[#matches + 1] = { id = spellID, entry = entry, name = name, icon = icon, description = description }
+            end
+            end
+        end
+        table.sort(matches, function(a, b)
+            local an, bn = a.name:lower(), b.name:lower()
+            return an == bn and a.id < b.id or an < bn
+        end)
+        local trackers = getProfile().customDebuffTrackers
+        for index, match in ipairs(matches) do
+            local row = libraryRows[index] or makeLibraryRow(index)
+            row.spellID, row.spellName = match.id, match.name
+            row.spellKind, row.spellDescription = match.entry.kind, match.description
+            row.icon:SetTexture(match.icon)
+            row.name:SetText(match.name .. "  |cffb89b72" .. match.entry.kind .. " · " .. L("Spell ID") .. " " .. tostring(match.id) .. "|r")
+            row.description:SetText(match.description)
+            local tracked = trackers[match.id] ~= nil
+            row.toggle:SetText(tracked and "X" or "")
+            row.toggle.check:SetShown(not tracked)
+            local label = row.toggle:GetFontString()
+            if label then label:SetTextColor(tracked and 1 or 0.45, tracked and 0.35 or 1, tracked and 0.25 or 0.45) end
+            row:Show()
+        end
+        for index = #matches + 1, #libraryRows do libraryRows[index]:Hide() end
+        libraryChild:SetHeight(math.max(1, #matches * 70))
+        libraryCount:SetText(L("%d debuffs · build %s", #matches, FBF.DebuffSoundLibrary.build or "unknown"))
+    end
+    librarySearch:SetScript("OnTextChanged", refreshDebuffLibrary)
+    librarySearch:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    debuffPageState.refreshLibrary = refreshDebuffLibrary
+
+    for index, kind in ipairs(debuffKinds) do
+        local row = CreateFrame("Frame", nil, debuffAlertsPanel, "BackdropTemplate")
+        row:SetSize(650, 78)
+        row:SetPoint("TOPLEFT", 25, -375 - (index - 1) * 84)
+        row:SetBackdrop({ bgFile = "Interface\\ChatFrame\\ChatFrameBackground", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 10, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        row:SetBackdropColor(unpack(theme.raised))
+        row:SetBackdropBorderColor(unpack(theme.border))
+        row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        row.label:SetPoint("TOPLEFT", 12, -10)
+        row.label:SetText(L(kind))
+        row.selector = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.selector:SetSize(245, 24)
+        row.selector:SetPoint("TOPLEFT", 105, -7)
+        decorateSelector(row.selector)
+        row.preview = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.preview:SetSize(88, 24)
+        row.preview:SetPoint("LEFT", row.selector, "RIGHT", 8, 0)
+        row.preview:SetText(L("Preview"))
+        row.preview:SetScript("OnClick", function() debuffSounds.Test(kind) end)
+        row.path = CreateFrame("EditBox", nil, row, "InputBoxTemplate")
+        row.path:SetSize(395, 22)
+        row.path:SetPoint("TOPLEFT", 105, -43)
+        row.path:SetAutoFocus(false)
+        row.path:SetMaxLetters(240)
+        theme.StyleInput(row.path)
+        row.path:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        row.usePath = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.usePath:SetSize(125, 22)
+        row.usePath:SetPoint("LEFT", row.path, "RIGHT", 8, 0)
+        row.usePath:SetText(L("Use custom file"))
+        row.usePath:SetScript("OnClick", function()
+            local path = row.path:GetText():match("^%s*(.-)%s*$"):gsub("/", "\\")
+            if path == "" then report(L("Enter a custom sound path first.")); return end
+            if not path:lower():match("^interface\\") then path = "Interface\\AddOns\\ForeverBuffFrames\\" .. path end
+            if setDebuffSound(kind, "file:" .. path) then refreshConfig() end
+        end)
+        row.selector:SetScript("OnClick", function()
+            openMediaPicker("sound", getProfile().debuffSounds[kind], function(value)
+                if setDebuffSound(kind, value) then refreshConfig() end
+            end, row.selector, combatSoundChoice)
+        end)
+        tooltip(row.path, L("Custom sound file"), L("Enter a path relative to the ForeverBuffFrames addon, or a full Interface path. Restart WoW after copying a new sound file."))
+        debuffSoundControls[kind] = row
+    end
+    debuffAlertEnable:SetScript("OnClick", function(self)
+        if InCombatLockdown() then self:SetChecked(getProfile().debuffSoundsEnabled); report(L("Change debuff sounds after combat.")); return end
+        getProfile().debuffSoundsEnabled = self:GetChecked() and true or false
+        debuffSounds.Sync()
+        refreshConfig()
+    end)
+    local function refreshDebuffAlerts()
+        local soundState = debuffSounds.GetStatus()
+        debuffAlertEnable:SetChecked(getProfile().debuffSoundsEnabled)
+        debuffAlertStatus:SetText(L("Status") .. ": " .. L(soundState.state or "Unavailable") .. " — " ..
+            tostring(soundState.registered or 0) .. " " .. L("registered") .. ", " ..
+            tostring(soundState.learned or 0) .. " " .. L("learned") .. ", " ..
+            tostring(soundState.seed or 0) .. " " .. L("seeded") .. ", " ..
+            tostring(soundState.custom or 0) .. " " .. L("personal"))
+        for _, kind in ipairs(debuffKinds) do
+            local value = getProfile().debuffSounds[kind]
+            local row = debuffSoundControls[kind]
+            row.selector:SetText(debuffSoundLabel(value))
+            row.path:SetText(type(value) == "string" and value:sub(1, 5) == "file:" and value:sub(6) or "")
+        end
+    end
+
+    makeDebuffBackButton(debuffAppearancePanel)
+    local debuffAppearanceHeading = debuffAppearancePanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    debuffAppearanceHeading:SetPoint("TOPLEFT", 25, -120)
+    debuffAppearanceHeading:SetText(L("Debuff Appearance"))
+    theme.StyleSectionHeading(debuffAppearanceHeading)
+    local debuffAppearanceHelp = debuffAppearancePanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    debuffAppearanceHelp:SetPoint("TOPLEFT", debuffAppearanceHeading, "BOTTOMLEFT", 0, -10)
+    debuffAppearanceHelp:SetWidth(650)
+    debuffAppearanceHelp:SetJustifyH("LEFT")
+    debuffAppearanceHelp:SetText(L("Configure debuff borders, corner icons, pulsing, thickness, and expansion."))
 
     local languageHeading = languagePanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     languageHeading:SetPoint("TOPLEFT", 25, -105)
@@ -600,6 +1210,435 @@ local function makeConfig()
         getDatabase().uiLocale = pendingLocale
         ReloadUI()
     end)
+
+    -- Diagnostics are deliberately pull-based: opening this panel only reads
+    -- capability flags. Tests and retries require an explicit button press.
+    local diagnosticsHeading = diagnosticsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    diagnosticsHeading:SetPoint("TOPLEFT", 25, -105)
+    diagnosticsHeading:SetText(L("Diagnostics"))
+    theme.StyleSectionHeading(diagnosticsHeading)
+    local diagnosticsHelp = diagnosticsPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    diagnosticsHelp:SetPoint("TOPLEFT", diagnosticsHeading, "BOTTOMLEFT", 0, -10)
+    diagnosticsHelp:SetWidth(650)
+    diagnosticsHelp:SetJustifyH("LEFT")
+    diagnosticsHelp:SetText(L("Preview existing effects and copy a compact report for support. Opening this tab does not change gameplay settings."))
+
+    local testHeading = diagnosticsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    testHeading:SetPoint("TOPLEFT", diagnosticsHelp, "BOTTOMLEFT", 0, -18)
+    testHeading:SetText(L("Test Lab"))
+    theme.StyleSectionHeading(testHeading)
+    local testHelp = diagnosticsPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    testHelp:SetPoint("TOPLEFT", testHeading, "BOTTOMLEFT", 0, -8)
+    testHelp:SetWidth(310)
+    testHelp:SetJustifyH("LEFT")
+    testHelp:SetText(L("These previews use the addon's current test icons and alert sound. Combat-safe feature probes will be added in their own phases."))
+    local diagnosticTestIcons = CreateFrame("Button", nil, diagnosticsPanel, "UIPanelButtonTemplate")
+    diagnosticTestIcons:SetSize(155, 25)
+    diagnosticTestIcons:SetPoint("TOPLEFT", testHelp, "BOTTOMLEFT", 0, -12)
+    diagnosticTestIcons:SetText(L("Toggle test icons"))
+    diagnosticTestIcons:SetScript("OnClick", toggleTest)
+    local diagnosticSound = CreateFrame("Button", nil, diagnosticsPanel, "UIPanelButtonTemplate")
+    diagnosticSound:SetSize(155, 25)
+    diagnosticSound:SetPoint("LEFT", diagnosticTestIcons, "RIGHT", 8, 0)
+    diagnosticSound:SetText(L("Play test sound"))
+    diagnosticSound:SetScript("OnClick", function() handleAlertCommand("sound") end)
+
+    local statusHeading = diagnosticsPanel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    statusHeading:SetPoint("TOPLEFT", 375, -168)
+    statusHeading:SetText(L("System Status"))
+    theme.StyleSectionHeading(statusHeading)
+    local statusText = diagnosticsPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    statusText:SetPoint("TOPLEFT", statusHeading, "BOTTOMLEFT", 0, -10)
+    statusText:SetWidth(320)
+    statusText:SetJustifyH("LEFT")
+    statusText:SetJustifyV("TOP")
+
+    local reportFrame = CreateFrame("Frame", nil, diagnosticsPanel, "BackdropTemplate")
+    reportFrame:SetPoint("TOPLEFT", 25, -500)
+    reportFrame:SetSize(650, 195)
+    reportFrame:SetBackdrop({ bgFile = "Interface\\ChatFrame\\ChatFrameBackground", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 12, insets = { left = 4, right = 4, top = 4, bottom = 4 } })
+    reportFrame:SetBackdropColor(unpack(theme.raised))
+    reportFrame:SetBackdropBorderColor(unpack(theme.border))
+    local function layoutDiagnosticReport(expanded)
+        reportFrame:ClearAllPoints()
+        reportFrame:SetPoint("TOPLEFT", 25, -500)
+        reportFrame:SetHeight(195)
+    end
+    local reportScroll = CreateFrame("ScrollFrame", nil, reportFrame, "UIPanelScrollFrameTemplate")
+    reportScroll:SetPoint("TOPLEFT", 8, -8)
+    reportScroll:SetPoint("BOTTOMRIGHT", -29, 8)
+    local reportBox = CreateFrame("EditBox", nil, reportScroll)
+    reportBox:SetSize(610, 179)
+    reportScroll:SetScrollChild(reportBox)
+    reportBox:SetMultiLine(true)
+    reportBox:SetAutoFocus(false)
+    reportBox:SetMaxLetters(0)
+    reportBox:SetFontObject("ChatFontNormal")
+    reportBox:SetTextInsets(4, 4, 4, 4)
+    reportBox:SetJustifyH("LEFT")
+    reportBox:SetJustifyV("TOP")
+    reportBox:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    reportBox:SetScript("OnTextChanged", function(self)
+        local textHeight = self.GetTextHeight and self:GetTextHeight() or nil
+        self:SetHeight(math.max(179, (tonumber(textHeight) or 163) + 16))
+        reportScroll:UpdateScrollChildRect()
+    end)
+    reportScroll:SetScript("OnSizeChanged", function(self, width)
+        reportBox:SetWidth(math.max(1, width - 8))
+        self:UpdateScrollChildRect()
+    end)
+    theme.StyleInput(reportBox)
+
+    local clearStatus
+    local function diagnosticValues()
+        local version, build, _, interface = GetBuildInfo()
+        local restricted = InCombatLockdown() and true or false
+        if C_Secrets and C_Secrets.ShouldAurasBeSecret then
+            local ok, value = pcall(C_Secrets.ShouldAurasBeSecret)
+            if ok then
+                restricted = (issecretvalue and issecretvalue(value)) and true or (value and true or false)
+            end
+        end
+        local container = auraFrames.GetContainer("buffs") or auraFrames.GetContainer("debuffs")
+        local state = getDiagnosticState()
+        local soundState = debuffSounds and debuffSounds.GetStatus() or {}
+        local removalState = buffRemovalSounds.GetStatus and buffRemovalSounds.GetStatus() or {}
+        return {
+            client = tostring(version or "?") .. " (" .. tostring(build or "?") .. ")",
+            interface = tostring(interface or "?"),
+            restricted = restricted,
+            container = container ~= nil,
+            dispel = C_AuraContainerUtil and C_AuraContainerUtil.ProcessCustomAuraButtonDispelTypeTextureOptions ~= nil,
+            typed = container and container.SetAuraGroupCandidateFilters ~= nil,
+            sound = C_UnitAuras and C_UnitAuras.AddAuraSound ~= nil,
+            tracking = C_Minimap and C_Minimap.GetNumTrackingTypes ~= nil and C_Minimap.GetTrackingInfo ~= nil,
+            awareness = auraFrames.GetAwarenessResult and auraFrames.GetAwarenessResult() or "Unavailable",
+            debuffSounds = soundState.state or "Unavailable",
+            soundRegistrations = soundState.registered or 0,
+            learnedDebuffs = soundState.learned or 0,
+            seedDebuffs = soundState.seed or 0,
+            removalState = removalState.state or "Unavailable",
+            removalRegistered = removalState.registered or 0,
+            removalCombatRegistered = removalState.combatRegistered or 0,
+            removalCombatAttempts = removalState.combatAttempts or 0,
+            removalLastCombatRegistered = removalState.lastCombatRegistered or 0,
+            removalLastCombatFailure = removalState.lastCombatFailure,
+            removalLearned = removalState.learned or 0,
+            blocked = state and state.lastBlocked or nil,
+        }
+    end
+    local function yesNo(value) return L(value and "Available" or "Unavailable") end
+    local function diagnosticReport()
+        local v = diagnosticValues()
+        return table.concat({
+            "ForeverBuffFrames diagnostics",
+            "Addon: " .. tostring((C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("ForeverBuffFrames", "Version"))
+                or (GetAddOnMetadata and GetAddOnMetadata("ForeverBuffFrames", "Version")) or "unknown"),
+            "Client: " .. v.client,
+            "Interface: " .. v.interface,
+            "Locale: " .. tostring(FBF.Locale.GetActive()),
+            "Combat: " .. tostring(InCombatLockdown() and true or false),
+            "Auras restricted: " .. tostring(v.restricted),
+            "Aura container: " .. tostring(v.container),
+            "Native dispel styling: " .. tostring(v.dispel),
+            "Typed candidate filters: " .. tostring(v.typed),
+            "Aura sounds: " .. tostring(v.sound),
+            "Tracking API: " .. tostring(v.tracking),
+            "Debuff awareness: " .. tostring(v.awareness),
+            "Debuff sounds: " .. tostring(v.debuffSounds),
+            "Debuff sound registrations: " .. tostring(v.soundRegistrations),
+            "Learned debuffs: " .. tostring(v.learnedDebuffs),
+            "Seed debuffs: " .. tostring(v.seedDebuffs),
+            "Combat buff removal sounds: " .. tostring(v.removalState),
+            "Buff removal learned/registered: " .. tostring(v.removalLearned) .. "/" .. tostring(v.removalRegistered),
+            "Combat-only registrations current/last/attempts: " .. tostring(v.removalCombatRegistered) .. "/" ..
+                tostring(v.removalLastCombatRegistered) .. "/" .. tostring(v.removalCombatAttempts),
+            "Last combat-only registration error: " .. tostring(v.removalLastCombatFailure or "none"),
+            "Last blocked operation: " .. tostring(v.blocked or "none"),
+        }, "\n")
+    end
+    local function refreshDiagnostics()
+        local v = diagnosticValues()
+        statusText:SetText(table.concat({
+            L("Client") .. ": " .. v.client,
+            L("Interface") .. ": " .. v.interface,
+            L("Aura data restricted") .. ": " .. L(v.restricted and "Yes" or "No"),
+            L("Aura containers") .. ": " .. yesNo(v.container),
+            L("Native dispel styling") .. ": " .. yesNo(v.dispel),
+            L("Typed aura filters") .. ": " .. yesNo(v.typed),
+            L("Combat-safe aura sounds") .. ": " .. yesNo(v.sound),
+            L("Tracking API") .. ": " .. yesNo(v.tracking),
+            L("Debuff awareness") .. ": " .. L(v.awareness),
+            L("Debuff sounds") .. ": " .. L(v.debuffSounds) .. " (" ..
+                v.soundRegistrations .. " " .. L("registered") .. ", " ..
+                v.learnedDebuffs .. " " .. L("learned") .. ", " ..
+                v.seedDebuffs .. " " .. L("seeded") .. ")",
+            L("Combat buff removal sounds") .. ": " .. L(v.removalState) .. " (" ..
+                v.removalRegistered .. " " .. L("registered") .. ", " ..
+                v.removalLearned .. " " .. L("learned") .. ", " ..
+                v.removalCombatRegistered .. " " .. L("combat-only") .. ")",
+            L("Last blocked operation") .. ": " .. (v.blocked or L("None")),
+        }, "\n"))
+        if clearStatus then clearStatus:SetEnabled(v.blocked ~= nil) end
+    end
+    local refreshStatus = CreateFrame("Button", nil, diagnosticsPanel, "UIPanelButtonTemplate")
+    refreshStatus:SetSize(120, 24)
+    refreshStatus:SetPoint("TOPLEFT", statusText, "BOTTOMLEFT", 0, -10)
+    refreshStatus:SetText(L("Recheck capabilities"))
+    refreshStatus:SetScript("OnClick", refreshDiagnostics)
+    tooltip(refreshStatus, L("Recheck capabilities"), L("Read the current combat, aura, sound, tracking, and blocked-action status again."))
+    clearStatus = CreateFrame("Button", nil, diagnosticsPanel, "UIPanelButtonTemplate")
+    clearStatus:SetSize(120, 24)
+    clearStatus:SetPoint("LEFT", refreshStatus, "RIGHT", 8, 0)
+    clearStatus:SetText(L("Clear blocked action"))
+    clearStatus:SetScript("OnClick", function() clearDiagnosticState(); refreshDiagnostics() end)
+    tooltip(clearStatus, L("Clear blocked action"), L("Forget the last ADDON_ACTION_BLOCKED event recorded for this session. This does not hide Lua errors."))
+    local copyReport = CreateFrame("Button", nil, diagnosticsPanel, "UIPanelButtonTemplate")
+    copyReport:SetSize(150, 24)
+    copyReport:SetPoint("BOTTOMLEFT", reportFrame, "TOPLEFT", 0, 8)
+    copyReport:SetText(L("Copy diagnostic report"))
+    copyReport:SetScript("OnClick", function()
+        reportBox:SetText(diagnosticReport())
+        reportScroll:SetVerticalScroll(0)
+        reportBox:SetFocus()
+        reportBox:HighlightText()
+    end)
+    local retryDiagnostics = CreateFrame("Button", nil, diagnosticsPanel, "UIPanelButtonTemplate")
+    retryDiagnostics:SetSize(150, 24)
+    retryDiagnostics:SetPoint("LEFT", copyReport, "RIGHT", 8, 0)
+    retryDiagnostics:SetText(L("Rescan expiry alerts"))
+    retryDiagnostics:SetScript("OnClick", function()
+        if InCombatLockdown() then
+            report(L("Rescan expiry alerts after combat."))
+            return
+        end
+        alerts.Sync()
+        refreshDiagnostics()
+    end)
+    tooltip(retryDiagnostics, L("Rescan expiry alerts"), L("Scan current buffs again and schedule eligible ten-second expiry alerts. This does not play a test sound."))
+
+    local experimentalCheck = CreateFrame("CheckButton", nil, diagnosticsPanel, "UICheckButtonTemplate")
+    experimentalCheck:SetPoint("TOPLEFT", diagnosticTestIcons, "BOTTOMLEFT", 0, -24)
+    experimentalCheck.textLabel = experimentalCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    experimentalCheck.textLabel:SetPoint("LEFT", experimentalCheck, "RIGHT", 2, 0)
+    experimentalCheck.textLabel:SetText(L("Show experimental tools"))
+    local experimentalPanel = CreateFrame("Frame", nil, diagnosticsPanel)
+    experimentalPanel:SetPoint("TOPLEFT", experimentalCheck, "BOTTOMLEFT", 0, -8)
+    experimentalPanel:SetSize(390, 100)
+    local experimentalHelp = experimentalPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    experimentalHelp:SetPoint("TOPLEFT")
+    experimentalHelp:SetSize(320, 28)
+    experimentalHelp:SetJustifyH("LEFT")
+    experimentalHelp:SetJustifyV("TOP")
+    experimentalHelp:SetText(L("Preview and opt into native debuff-type borders. These controls do not add sounds."))
+    local awarenessCheck = CreateFrame("CheckButton", nil, experimentalPanel, "UICheckButtonTemplate")
+    awarenessCheck:SetPoint("TOPLEFT", experimentalHelp, "BOTTOMLEFT", 0, -4)
+    awarenessCheck.textLabel = awarenessCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    awarenessCheck.textLabel:SetPoint("LEFT", awarenessCheck, "RIGHT", 2, 0)
+    awarenessCheck.textLabel:SetText(L("Enable debuff borders"))
+    awarenessCheck:SetScript("OnClick", function(self)
+        if InCombatLockdown() then self:SetChecked(getProfile().debuffAwareness); report(L("Change debuff borders after combat.")); return end
+        getProfile().debuffAwareness = self:GetChecked() and true or false
+        build("debuffs")
+    end)
+    local pulseCheck = CreateFrame("CheckButton", nil, experimentalPanel, "UICheckButtonTemplate")
+    pulseCheck:SetPoint("LEFT", awarenessCheck.textLabel, "RIGHT", 18, 0)
+    pulseCheck.textLabel = pulseCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    pulseCheck.textLabel:SetPoint("LEFT", pulseCheck, "RIGHT", 2, 0)
+    pulseCheck.textLabel:SetText(L("Pulse borders"))
+    pulseCheck:SetScript("OnClick", function(self)
+        if InCombatLockdown() then self:SetChecked(getProfile().debuffPulse); report(L("Change debuff borders after combat.")); return end
+        getProfile().debuffPulse = self:GetChecked() and true or false
+        build("debuffs")
+    end)
+    local borderStyle = CreateFrame("Button", nil, experimentalPanel, "UIPanelButtonTemplate")
+    borderStyle:SetSize(190, 24)
+    borderStyle:SetPoint("TOPLEFT", awarenessCheck, "BOTTOMLEFT", 0, -8)
+    decorateSelector(borderStyle)
+    local styleOrder = { "border", "bordericon", "icon" }
+    local styleLabels = { border = "Border", bordericon = "Border and icon", icon = "Corner icon" }
+    local function updateBorderStyle() borderStyle:SetText(L(styleLabels[getProfile().debuffBorderStyle] or "Border")) end
+    local borderStyleMenu = CreateFrame("Frame", nil, diagnosticsPanel, "BackdropTemplate")
+    borderStyleMenu:SetSize(190, #styleOrder * 28 + 12)
+    borderStyleMenu:SetPoint("TOPLEFT", borderStyle, "BOTTOMLEFT", 0, -2)
+    borderStyleMenu:SetFrameStrata("DIALOG")
+    borderStyleMenu:SetFrameLevel(frame:GetFrameLevel() + 20)
+    theme.ApplyPopup(borderStyleMenu)
+    local borderStyleMenuFill = borderStyleMenu:CreateTexture(nil, "BACKGROUND", nil, -8)
+    borderStyleMenuFill:SetPoint("TOPLEFT", 5, -5)
+    borderStyleMenuFill:SetPoint("BOTTOMRIGHT", -5, 5)
+    borderStyleMenuFill:SetColorTexture(0.025, 0.018, 0.014, 1)
+    borderStyleMenu:Hide()
+    for index, value in ipairs(styleOrder) do
+        local item = CreateFrame("Button", nil, borderStyleMenu)
+        item:SetSize(176, 27)
+        item:SetPoint("TOPLEFT", 7, -6 - (index - 1) * 28)
+        theme.AddRowHighlight(item, 1)
+        item.selected = item:CreateTexture(nil, "BACKGROUND")
+        item.selected:SetPoint("TOPLEFT", 1, -1)
+        item.selected:SetPoint("BOTTOMRIGHT", -1, 1)
+        item.selected:SetColorTexture(unpack(theme.accent))
+        item.label = item:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        item.label:SetPoint("LEFT", 9, 0)
+        item.label:SetText(L(styleLabels[value]))
+        item:SetScript("OnShow", function(self) self.selected:SetShown(getProfile().debuffBorderStyle == value) end)
+        item:SetScript("OnClick", function()
+            if InCombatLockdown() then report(L("Change debuff borders after combat.")); return end
+            getProfile().debuffBorderStyle = value
+            borderStyleMenu:Hide()
+            openMenu = nil
+            updateBorderStyle()
+            build("debuffs")
+        end)
+    end
+    borderStyle:SetScript("OnClick", function()
+        if openMenu and openMenu ~= borderStyleMenu then openMenu:Hide() end
+        local show = not borderStyleMenu:IsShown()
+        if show then
+            -- SetParent can recalculate frame levels. Raise the popup when it is
+            -- opened so controls beneath it cannot draw through the menu fill.
+            borderStyleMenu:SetFrameStrata("FULLSCREEN_DIALOG")
+            borderStyleMenu:SetFrameLevel(frame:GetFrameLevel() + 100)
+        end
+        borderStyleMenu:SetShown(show)
+        openMenu = show and borderStyleMenu or nil
+    end)
+    tooltip(borderStyle, L("Debuff border style"), L("Choose the Blizzard-native presentation used by live debuffs and the four-type preview."))
+    local previewBorders = CreateFrame("Button", nil, experimentalPanel, "UIPanelButtonTemplate")
+    previewBorders:SetSize(170, 24)
+    previewBorders:SetPoint("LEFT", borderStyle, "RIGHT", 8, 0)
+    previewBorders:SetText(L("Preview"))
+    previewBorders:SetScript("OnClick", function()
+        previewDebuffAwareness(getProfile().debuffBorderStyle, getProfile().debuffPulse,
+            getProfile().debuffBorderThickness, getProfile().debuffPulseExpansion)
+    end)
+    tooltip(previewBorders, L("Preview"), L("Preview Magic, Curse, Disease, and Poison using the selected border style and pulse setting."))
+    awarenessCheck:SetParent(debuffAppearancePanel)
+    awarenessCheck:ClearAllPoints()
+    awarenessCheck:SetPoint("TOPLEFT", 25, -245)
+    pulseCheck:SetParent(debuffAppearancePanel)
+    pulseCheck:ClearAllPoints()
+    pulseCheck:SetPoint("LEFT", awarenessCheck.textLabel, "RIGHT", 18, 0)
+    borderStyle:SetParent(debuffAppearancePanel)
+    borderStyle:ClearAllPoints()
+    borderStyle:SetPoint("TOPLEFT", 25, -280)
+    borderStyleMenu:SetParent(frame)
+    borderStyleMenu:SetFrameStrata("FULLSCREEN_DIALOG")
+    borderStyleMenu:SetFrameLevel(frame:GetFrameLevel() + 100)
+    previewBorders:SetParent(debuffAppearancePanel)
+    previewBorders:ClearAllPoints()
+    previewBorders:SetPoint("LEFT", borderStyle, "RIGHT", 8, 0)
+    local appearanceControls = {}
+    local appearanceSyncing = false
+    local function makeAppearanceSlider(label, key, minimum, maximum, x)
+        local title = debuffAppearancePanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        title:SetPoint("TOPLEFT", x, -318)
+        title:SetText(L(label))
+        local slider = CreateFrame("Slider", nil, debuffAppearancePanel)
+        slider:SetSize(200, 18)
+        slider:SetPoint("TOPLEFT", x, -338)
+        slider:SetOrientation("HORIZONTAL")
+        slider:SetMinMaxValues(minimum, maximum)
+        slider:SetValueStep(1)
+        slider:SetObeyStepOnDrag(true)
+        slider:EnableMouseWheel(true)
+        slider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+        local track = slider:CreateTexture(nil, "BACKGROUND")
+        theme.StyleSlider(slider, track)
+        track:SetPoint("LEFT", slider, "LEFT")
+        track:SetPoint("RIGHT", slider, "RIGHT")
+        track:SetHeight(4)
+        local box = CreateFrame("EditBox", nil, debuffAppearancePanel, "InputBoxTemplate")
+        box:SetSize(48, 20)
+        box:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+        box:SetAutoFocus(false)
+        box:SetJustifyH("CENTER")
+        theme.StyleInput(box)
+        local function apply(value)
+            value = math.floor(value + 0.5)
+            if InCombatLockdown() then report(L("Change debuff borders after combat.")); refreshConfig(); return end
+            getProfile()[key] = value
+            build("debuffs")
+            previewDebuffAwareness(getProfile().debuffBorderStyle, getProfile().debuffPulse,
+                getProfile().debuffBorderThickness, getProfile().debuffPulseExpansion)
+            refreshConfig()
+        end
+        slider:SetScript("OnValueChanged", function(_, value)
+            if not appearanceSyncing then box:SetText(tostring(math.floor(value + 0.5))) end
+        end)
+        slider:SetScript("OnMouseUp", function(self) apply(self:GetValue()) end)
+        slider:SetScript("OnMouseWheel", function(_, delta)
+            apply(math.max(minimum, math.min(maximum, getProfile()[key] + (delta > 0 and 1 or -1))))
+        end)
+        box:SetScript("OnEscapePressed", function(self) self:ClearFocus(); refreshConfig() end)
+        box:SetScript("OnEnterPressed", function(self)
+            local value = tonumber(self:GetText())
+            self:ClearFocus()
+            if value and value % 1 == 0 and value >= minimum and value <= maximum then apply(value)
+            else report(L("%s must be a whole number from %d to %d.", L(label), minimum, maximum)); refreshConfig() end
+        end)
+        tooltip(slider, L(label), L("Drag the slider or use the mouse wheel for one-point steps."))
+        appearanceControls[key] = { slider = slider, box = box }
+    end
+    makeAppearanceSlider("Border thickness", "debuffBorderThickness", 1, 6, 25)
+    makeAppearanceSlider("Pulse expansion", "debuffPulseExpansion", 0, 12, 360)
+    local soundEnable = CreateFrame("CheckButton", nil, experimentalPanel, "UICheckButtonTemplate")
+    soundEnable:SetPoint("TOPLEFT", borderStyle, "BOTTOMLEFT", 0, -8)
+    soundEnable.textLabel = soundEnable:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    soundEnable.textLabel:SetPoint("LEFT", soundEnable, "RIGHT", 2, 0)
+    soundEnable.textLabel:SetText(L("Enable learned debuff sounds"))
+    soundEnable:SetScript("OnClick", function(self)
+        if InCombatLockdown() then self:SetChecked(getProfile().debuffSoundsEnabled); report(L("Change debuff sounds after combat.")); return end
+        getProfile().debuffSoundsEnabled = self:GetChecked() and true or false
+        debuffSounds.Sync(); refreshDiagnostics()
+    end)
+    local debuffSoundButton = CreateFrame("Button", nil, experimentalPanel, "UIPanelButtonTemplate")
+    debuffSoundButton:SetSize(155, 24)
+    debuffSoundButton:SetPoint("TOPLEFT", soundEnable, "BOTTOMLEFT", 0, -6)
+    decorateSelector(debuffSoundButton)
+    local function updateDebuffSoundButton()
+        local selected = getProfile().debuffSounds.Magic
+        local label = selected
+        for _, choice in ipairs(mediaChoices("sound")) do if choice.value == selected then label = choice.label; break end end
+        debuffSoundButton:SetText(L("Debuff sound") .. ": " .. L(label))
+    end
+    debuffSoundButton:SetScript("OnClick", function()
+        openMediaPicker("sound", getProfile().debuffSounds.Magic, function(value)
+            for _, kind in ipairs({ "Magic", "Curse", "Disease", "Poison" }) do getProfile().debuffSounds[kind] = value end
+            getProfile().debuffSoundName = value
+            updateDebuffSoundButton(); debuffSounds.Sync(); refreshDiagnostics()
+        end, debuffSoundButton, function(choice)
+            return choice.value == "none" or choice.value == "default" or choice.value:sub(1, 4) == "lsm:"
+        end)
+    end)
+    local testDebuffSound = CreateFrame("Button", nil, experimentalPanel, "UIPanelButtonTemplate")
+    testDebuffSound:SetSize(80, 24)
+    testDebuffSound:SetPoint("LEFT", debuffSoundButton, "RIGHT", 8, 0)
+    testDebuffSound:SetText(L("Test sound"))
+    testDebuffSound:SetScript("OnClick", function() debuffSounds.Test("Magic") end)
+    local clearLearnedDebuffs = CreateFrame("Button", nil, experimentalPanel, "UIPanelButtonTemplate")
+    clearLearnedDebuffs:SetSize(120, 24)
+    clearLearnedDebuffs:SetPoint("LEFT", testDebuffSound, "RIGHT", 8, 0)
+    clearLearnedDebuffs:SetText(L("Clear learned"))
+    clearLearnedDebuffs:SetScript("OnClick", function()
+        if not debuffSounds.ClearLearned() then report(L("Clear learned debuffs after combat.")); return end
+        refreshDiagnostics()
+        report(L("Learned debuff data cleared."))
+    end)
+    -- Sound configuration graduated to its own page after the combat probe
+    -- succeeded. Keep Diagnostics focused on capability and border testing.
+    soundEnable:Hide()
+    debuffSoundButton:Hide()
+    testDebuffSound:Hide()
+    clearLearnedDebuffs:Hide()
+    experimentalPanel:Hide()
+    experimentalCheck:Hide()
+    experimentalCheck:SetScript("OnClick", function(self)
+        experimentalPanel:SetShown(self:GetChecked())
+        layoutDiagnosticReport(self:GetChecked())
+        if not self:GetChecked() then borderStyleMenu:Hide(); if openMenu == borderStyleMenu then openMenu = nil end end
+    end)
+    tooltip(experimentalCheck, L("Show experimental tools"), L("Reveal opt-in development probes. They never run merely because this tab is opened."))
 
     local syncing = false
     local numericControls = {}
@@ -1026,7 +2065,7 @@ local function makeConfig()
     alertHelp:SetPoint("TOPLEFT", 10, -15)
     alertHelp:SetWidth(360)
     alertHelp:SetJustifyH("LEFT")
-    alertHelp:SetText(L("Sound and raid warning play together at 10 seconds remaining. Live alerts require an out-of-combat aura check; they are skipped during combat."))
+    alertHelp:SetText(L("The ten-second warning remains available outside combat. An optional native sound can play when a learned buff is removed, including during combat."))
 
     local soundTest = CreateFrame("Button", nil, alertLeft, "UIPanelButtonTemplate")
     soundTest:SetSize(125, 25)
@@ -1046,6 +2085,7 @@ local function makeConfig()
         openMediaPicker("sound", getProfile().alertSound, function(value)
             if InCombatLockdown() then report(L("Change the alert sound after combat.")); return end
             getProfile().alertSound = value
+            if buffRemovalSounds.Sync then buffRemovalSounds.Sync() end
             refreshConfig()
         end, soundButton)
     end)
@@ -1060,7 +2100,7 @@ local function makeConfig()
     blacklistHelp:SetPoint("TOPLEFT", blacklistHeading, "BOTTOMLEFT", 0, -8)
     blacklistHelp:SetWidth(355)
     blacklistHelp:SetJustifyH("LEFT")
-    blacklistHelp:SetText(L("Block specific buff spell IDs from triggering expiry alerts."))
+    blacklistHelp:SetText(L("Block specific buff spell IDs from triggering expiry or removal alerts."))
 
     local blacklistInput = CreateFrame("EditBox", nil, alertLeft, "InputBoxTemplate")
     blacklistInput:SetSize(115, 25)
@@ -1122,6 +2162,7 @@ local function makeConfig()
         blacklistInput:ClearFocus()
         updateBlacklistList()
         handleAlertCommand(getProfile().expirationSounds and "on" or "off")
+        if buffRemovalSounds.Sync then buffRemovalSounds.Sync() end
         report(L(blocked and "Spell %d added to the alert blacklist." or "Spell %d removed from the alert blacklist.", id))
     end
 
@@ -1227,15 +2268,42 @@ local function makeConfig()
             if InCombatLockdown() then report(L("Change alert filters after combat.")); return end
             getProfile().onlyMyBuffs = value
             handleAlertCommand(getProfile().expirationSounds and "on" or "off")
+            if buffRemovalSounds.Sync then buffRemovalSounds.Sync() end
         end)
-    local alertDebugCheck = makeCheck(alertRight, L("Debug expiry alerts"), -81,
-        L("Print scheduled, skipped, and fired alerts outside combat. Aura details are unavailable to the addon during combat."),
-        function(value) getProfile().debugAlerts = value end)
+    local removedSoundCheck = makeCheck(alertRight, L("Combat buff-removed sound"), -81,
+        L("Play a Blizzard-native sound when an eligible learned buff is removed. This works during combat but fires after the buff is gone, not ten seconds before."),
+        function(value)
+            if InCombatLockdown() then report(L("Change buff removal sounds after combat.")); return end
+            getProfile().buffRemovedSounds = value
+            if buffRemovalSounds.Learn then buffRemovalSounds.Learn() end
+            if buffRemovalSounds.Sync then buffRemovalSounds.Sync() end
+        end)
+    local refreshAssignments
+    local removalSoundButton = CreateFrame("Button", nil, alertRight, "UIPanelButtonTemplate")
+    removalSoundButton:SetSize(250, 25)
+    removalSoundButton:SetPoint("TOPLEFT", removedSoundCheck, "BOTTOMLEFT", 0, -8)
+    decorateSelector(removalSoundButton)
+    removalSoundButton:SetScript("OnClick", function()
+        if openMenu then openMenu:Hide(); openMenu = nil end
+        if mediaPicker and mediaPicker:IsShown() and mediaPicker.kind == "sound" then
+            mediaPicker:Hide()
+            return
+        end
+        openMediaPicker("sound", getProfile().buffRemovalSound, function(value)
+            if InCombatLockdown() then report(L("Change buff removal sounds after combat.")); return end
+            getProfile().buffRemovalSound = value
+            if buffRemovalSounds.Sync then buffRemovalSounds.Sync() end
+            if refreshAssignments then refreshAssignments() end
+            refreshConfig()
+        end, removalSoundButton, combatSoundChoice)
+    end)
+    tooltip(removalSoundButton, L("Default removal sound"),
+        L("Choose the fallback sound for selected buffs that do not have their own assignment. Use Play in the list to preview it."))
     local minimumLabel = alertRight:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     minimumLabel:SetText(L("Minimum duration (sec)"))
     local minimumBox = CreateFrame("EditBox", nil, alertRight, "InputBoxTemplate")
     minimumBox:SetSize(55, 20)
-    minimumBox:SetPoint("TOPRIGHT", alertRight, "TOPRIGHT", -15, -125)
+    minimumBox:SetPoint("TOPRIGHT", alertRight, "TOPRIGHT", -15, -168)
     minimumLabel:SetPoint("RIGHT", minimumBox, "LEFT", -8, 0)
     minimumBox:SetAutoFocus(false)
     minimumBox:SetJustifyH("CENTER")
@@ -1250,9 +2318,230 @@ local function makeConfig()
         elseif value and value % 1 == 0 and value >= 0 and value <= 3600 then
             getProfile().alertMinDuration = value
             handleAlertCommand(getProfile().expirationSounds and "on" or "off")
+            if buffRemovalSounds.Sync then buffRemovalSounds.Sync() end
         else
             report(L("Minimum buff duration must be a whole number from 0 to 3600 seconds."))
         end
+        refreshConfig()
+    end)
+
+    local assignmentHeading = alertRight:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    assignmentHeading:SetPoint("TOPLEFT", alertRight, "TOPLEFT", 15, -215)
+    assignmentHeading:SetText(L("Specific buff alerts"))
+    theme.StyleSectionHeading(assignmentHeading)
+    local assignmentHelp = alertRight:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    assignmentHelp:SetPoint("TOPLEFT", assignmentHeading, "BOTTOMLEFT", 0, -8)
+    assignmentHelp:SetWidth(250)
+    assignmentHelp:SetJustifyH("LEFT")
+    assignmentHelp:SetText(L("Choose exactly which learned buffs should alert and assign a sound to each one."))
+    local manageAssignments = CreateFrame("Button", nil, alertRight, "UIPanelButtonTemplate")
+    manageAssignments:SetSize(245, 26)
+    manageAssignments:SetPoint("TOPLEFT", assignmentHelp, "BOTTOMLEFT", 0, -12)
+    manageAssignments:SetText(L("Manage specific buff alerts"))
+
+    local assignmentFrame = CreateFrame("Frame", nil, frame)
+    assignmentFrame:SetPoint("TOPLEFT", frame, "TOPLEFT", 150, 0)
+    assignmentFrame:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    table.insert(contentPanels, assignmentFrame)
+    assignmentFrame:Hide()
+    local assignmentTitle = assignmentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    assignmentTitle:SetPoint("TOPLEFT", 25, -120)
+    assignmentTitle:SetText(L("Specific buff alerts"))
+    theme.StyleSectionHeading(assignmentTitle)
+    local assignmentBack = CreateFrame("Button", nil, assignmentFrame, "UIPanelButtonTemplate")
+    assignmentBack:SetSize(145, 24)
+    assignmentBack:SetPoint("TOPLEFT", 25, -82)
+    assignmentBack:SetText(L("Back to Alerts"))
+    assignmentBack:SetScript("OnClick", function()
+        dismissTransientUI()
+        buffAlertDetail = false
+        refreshConfig()
+    end)
+    local assignmentInstructions = assignmentFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    assignmentInstructions:SetPoint("TOPLEFT", assignmentTitle, "BOTTOMLEFT", 0, -8)
+    assignmentInstructions:SetWidth(610)
+    assignmentInstructions:SetJustifyH("LEFT")
+    assignmentInstructions:SetText(L("Check Alert beside a buff, then choose the recording on that same row. Unchecked buffs stay silent. Combat-compatible files from enabled LibSharedMedia sound packs appear automatically."))
+    local customSoundLabel = assignmentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    customSoundLabel:SetPoint("TOPLEFT", assignmentInstructions, "BOTTOMLEFT", 0, -14)
+    customSoundLabel:SetText(L("Add a custom sound file"))
+    local customSoundPath = CreateFrame("EditBox", nil, assignmentFrame, "InputBoxTemplate")
+    customSoundPath:SetSize(400, 22)
+    customSoundPath:SetPoint("TOPLEFT", customSoundLabel, "BOTTOMLEFT", 0, -6)
+    customSoundPath:SetAutoFocus(false)
+    customSoundPath:SetTextInsets(6, 6, 0, 0)
+    theme.StyleInput(customSoundPath)
+    local addCustomSound = CreateFrame("Button", nil, assignmentFrame, "UIPanelButtonTemplate")
+    addCustomSound:SetSize(105, 22)
+    addCustomSound:SetPoint("LEFT", customSoundPath, "RIGHT", 10, 0)
+    addCustomSound:SetText(L("Add file"))
+    addCustomSound:SetScript("OnClick", function()
+        if InCombatLockdown() then report(L("Change buff removal sounds after combat.")); return end
+        local relative = customSoundPath:GetText():match("^%s*(.-)%s*$"):gsub("/", "\\")
+        local lower = relative:lower()
+        if relative == "" or (not lower:match("%.ogg$") and not lower:match("%.mp3$")) then
+            report(L("Enter an .ogg or .mp3 path first.")); return
+        end
+        local path = relative
+        if not path:lower():match("^interface\\") then path = "Interface\\AddOns\\ForeverBuffFrames\\" .. path end
+        local label = relative:match("([^\\]+)$") or relative
+        getProfile().customSounds[label] = path
+        customSoundPath:SetText("")
+        report(L("Custom sound added. Use a buff's sound selector to assign it."))
+    end)
+    tooltip(customSoundPath, L("Custom sound file"), L("Copy the file into CustomSounds before starting WoW, then enter a path such as CustomSounds\\my-alert.ogg."))
+    local assignmentSearchLabel = assignmentFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    assignmentSearchLabel:SetPoint("TOPLEFT", customSoundPath, "BOTTOMLEFT", 0, -14)
+    assignmentSearchLabel:SetWidth(610)
+    assignmentSearchLabel:SetJustifyH("LEFT")
+    assignmentSearchLabel:SetText(L("Find a learned buff by name or Spell ID"))
+    local showAllLearned = false
+    local showAllCheck = CreateFrame("CheckButton", nil, assignmentFrame, "UICheckButtonTemplate")
+    showAllCheck:SetPoint("RIGHT", assignmentSearchLabel, "RIGHT", -5, 0)
+    showAllCheck.textLabel = showAllCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    showAllCheck.textLabel:SetPoint("RIGHT", showAllCheck, "LEFT", -2, 0)
+    showAllCheck.textLabel:SetText(L("Show all characters"))
+    local assignmentSearch = CreateFrame("EditBox", nil, assignmentFrame, "InputBoxTemplate")
+    assignmentSearch:SetSize(505, 22)
+    assignmentSearch:SetPoint("TOPLEFT", assignmentSearchLabel, "BOTTOMLEFT", 0, -6)
+    assignmentSearch:SetAutoFocus(false)
+    assignmentSearch:SetTextInsets(6, 6, 0, 0)
+    theme.StyleInput(assignmentSearch)
+    local assignmentCount = assignmentFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    assignmentCount:SetPoint("LEFT", assignmentSearch, "RIGHT", 10, 0)
+    local assignmentScroll = CreateFrame("ScrollFrame", nil, assignmentFrame, "UIPanelScrollFrameTemplate")
+    assignmentScroll:SetPoint("TOPLEFT", assignmentSearch, "BOTTOMLEFT", -2, -12)
+    assignmentScroll:SetPoint("BOTTOMRIGHT", assignmentFrame, "BOTTOMRIGHT", -38, 20)
+    local assignmentChild = CreateFrame("Frame", nil, assignmentScroll)
+    assignmentChild:SetSize(595, 1)
+    assignmentScroll:SetScrollChild(assignmentChild)
+    local assignmentRows = {}
+    local function currentSpellBook()
+        local ids, names = {}, {}
+        if not (C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines
+            and C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookItemInfo
+            and Enum and Enum.SpellBookSpellBank) then return ids, names end
+        local ok, count = pcall(C_SpellBook.GetNumSpellBookSkillLines)
+        if not ok or type(count) ~= "number" then return ids, names end
+        for line = 1, count do
+            local lineOK, info = pcall(C_SpellBook.GetSpellBookSkillLineInfo, line)
+            if lineOK and type(info) == "table" then
+                local first = (info.itemIndexOffset or 0) + 1
+                local last = (info.itemIndexOffset or 0) + (info.numSpellBookItems or 0)
+                for slot = first, last do
+                    local itemOK, item = pcall(C_SpellBook.GetSpellBookItemInfo, slot, Enum.SpellBookSpellBank.Player)
+                    if itemOK and type(item) == "table" and not item.isPassive then
+                        if type(item.actionID) == "number" then ids[item.actionID] = true end
+                        if type(item.spellID) == "number" then ids[item.spellID] = true end
+                        if type(item.name) == "string" and item.name ~= "" then names[item.name:lower()] = true end
+                    end
+                end
+            end
+        end
+        return ids, names
+    end
+    local function soundLabel(value)
+        for _, choice in ipairs(mediaChoices("sound")) do if choice.value == value then return choice.label end end
+        return L("Original warning")
+    end
+    local function makeAssignmentRow(index)
+        local row = CreateFrame("Frame", nil, assignmentChild, "BackdropTemplate")
+        row:SetSize(590, 62)
+        row:SetPoint("TOPLEFT", 0, -(index - 1) * 66)
+        row:SetBackdrop({ bgFile = "Interface\\ChatFrame\\ChatFrameBackground", edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 9, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+        row:SetBackdropColor(unpack(theme.raised))
+        row:SetBackdropBorderColor(unpack(theme.border))
+        row.check = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+        row.check:SetPoint("TOPLEFT", 8, -4)
+        row.checkLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.checkLabel:SetPoint("LEFT", row.check, "RIGHT", -2, 0)
+        row.checkLabel:SetText(L("Alert"))
+        row.combat = CreateFrame("CheckButton", nil, row, "UICheckButtonTemplate")
+        row.combat:SetPoint("BOTTOMLEFT", 8, 2)
+        row.combatLabel = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.combatLabel:SetPoint("LEFT", row.combat, "RIGHT", -2, 0)
+        row.combatLabel:SetText(L("Combat only"))
+        row.name = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.name:SetPoint("TOPLEFT", 130, -10)
+        row.name:SetWidth(430)
+        row.name:SetJustifyH("LEFT")
+        row.soundLabel = row:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        row.soundLabel:SetPoint("TOPLEFT", 130, -36)
+        row.soundLabel:SetText(L("Sound:"))
+        row.sound = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.sound:SetSize(215, 22)
+        row.sound:SetPoint("LEFT", row.soundLabel, "RIGHT", 6, 0)
+        decorateSelector(row.sound)
+        row.preview = CreateFrame("Button", nil, row, "UIPanelButtonTemplate")
+        row.preview:SetSize(78, 22)
+        row.preview:SetPoint("LEFT", row.sound, "RIGHT", 8, 0)
+        row.preview:SetText(L("Preview"))
+        row.check:SetScript("OnClick", function(self)
+            if InCombatLockdown() then self:SetChecked(not self:GetChecked()); report(L("Change buff removal sounds after combat.")); return end
+            row.entry.enabled = self:GetChecked() and true or false
+            buffRemovalSounds.Sync()
+        end)
+        row.combat:SetScript("OnClick", function(self)
+            if InCombatLockdown() then self:SetChecked(not self:GetChecked()); report(L("Change buff removal sounds after combat.")); return end
+            row.entry.combatOnly = self:GetChecked() and true or false
+            buffRemovalSounds.Sync()
+        end)
+        row.sound:SetScript("OnClick", function()
+            openMediaPicker("sound", row.entry.sound or getProfile().buffRemovalSound or "default", function(value)
+                if InCombatLockdown() then report(L("Change buff removal sounds after combat.")); return end
+                row.entry.sound = value
+                row.sound:SetText(soundLabel(value))
+                buffRemovalSounds.Sync()
+            end, row.sound, combatSoundChoice)
+        end)
+        row.preview:SetScript("OnClick", function()
+            local source = soundSource(row.entry.sound or getProfile().buffRemovalSound or "default")
+            if source == SOUND_FILE_ID then PlaySoundFile(source, "Master")
+            elseif type(source) == "number" then PlaySound(source, "Master")
+            elseif source then PlaySoundFile(source, "Master") end
+        end)
+        assignmentRows[index] = row
+        return row
+    end
+    refreshAssignments = function()
+        local query = assignmentSearch:GetText():lower():match("^%s*(.-)%s*$")
+        local matches, total = {}, 0
+        local knownIDs, knownNames = currentSpellBook()
+        local class = select(2, UnitClass("player"))
+        for spellID, entry in pairs(getProfile().learnedBuffAlerts or {}) do
+            total = total + 1
+            local haystack = ((entry.name or "") .. " " .. tostring(spellID)):lower()
+            local relevant = entry.enabled == true or knownIDs[spellID]
+                or knownNames[(entry.name or ""):lower()]
+                or (class and entry.classes and entry.classes[class])
+            if (showAllLearned or relevant) and (query == "" or haystack:find(query, 1, true)) then
+                matches[#matches + 1] = { id = spellID, entry = entry }
+            end
+        end
+        table.sort(matches, function(a, b) return (a.entry.name or ""):lower() < (b.entry.name or ""):lower() end)
+        for index, match in ipairs(matches) do
+            local row = assignmentRows[index] or makeAssignmentRow(index)
+            row.entry = match.entry
+            row.name:SetText((match.entry.name or L("Spell")) .. "  |cff9b9b9b" .. tostring(match.id) .. "|r")
+            row.check:SetChecked(match.entry.enabled == true)
+            row.combat:SetChecked(match.entry.combatOnly == true)
+            row.sound:SetText(soundLabel(match.entry.sound or getProfile().buffRemovalSound or "default"))
+            row:Show()
+        end
+        for index = #matches + 1, #assignmentRows do assignmentRows[index]:Hide() end
+        assignmentChild:SetHeight(math.max(1, #matches * 66))
+        assignmentCount:SetText(L("%d shown / %d learned", #matches, total))
+    end
+    assignmentSearch:SetScript("OnTextChanged", refreshAssignments)
+    assignmentSearch:SetScript("OnEscapePressed", assignmentSearch.ClearFocus)
+    showAllCheck:SetScript("OnClick", function(self)
+        showAllLearned = self:GetChecked() and true or false
+        refreshAssignments()
+    end)
+    manageAssignments:SetScript("OnClick", function()
+        dismissTransientUI()
+        buffAlertDetail = true
+        refreshAssignments()
         refreshConfig()
     end)
 
@@ -1262,12 +2551,19 @@ local function makeConfig()
         createProfile = createProfile, copyProfile = copyProfile,
         renameProfile = renameProfile, deleteProfile = deleteProfile, profileButton = profileButton,
         generalChecks = { minimapCheck, stockBuffCheck, stockDebuffCheck },
-        alertChecks = { expirationSoundCheck, ownBuffsCheck, alertDebugCheck },
+        alertChecks = { expirationSoundCheck, ownBuffsCheck, removedSoundCheck },
         alertLeft = alertLeft, alertRight = alertRight, blacklistInput = blacklistInput,
         blockID = blockID, unblockID = unblockID, soundButton = soundButton, soundTest = soundTest,
+        removalSoundButton = removalSoundButton,
         copyBackup = copy, restoreBackup = restore,
         languageButton = languageButton, applyLanguage = applyLanguage,
         generalHelp = generalHelp, profileHelp = profileHelp, languageHelp = languageHelp,
+        diagnosticsHelp = diagnosticsHelp, diagnosticReport = reportFrame,
+        diagnosticTestHelp = testHelp,
+        diagnosticStatusHeading = statusHeading,
+        diagnosticTestRow = { diagnosticTestIcons, diagnosticSound },
+        diagnosticStatusRow = { refreshStatus, clearStatus },
+        diagnosticReportRow = { copyReport, retryDiagnostics },
     }
 
     refreshConfig = function()
@@ -1303,10 +2599,17 @@ local function makeConfig()
         stockDebuffCheck:SetChecked(getProfile().hideBlizzardDebuffs)
         expirationSoundCheck:SetChecked(getProfile().expirationSounds)
         ownBuffsCheck:SetChecked(getProfile().onlyMyBuffs)
-        alertDebugCheck:SetChecked(getProfile().debugAlerts)
+        removedSoundCheck:SetChecked(getProfile().buffRemovedSounds)
+        local removalSoundName = getProfile().buffRemovalSound
+        for _, choice in ipairs(mediaChoices("sound")) do
+            if choice.value == removalSoundName then removalSoundName = choice.label; break end
+        end
+        removalSoundButton:SetText(L("Default removal sound") .. ": " .. L(removalSoundName))
+        refreshAssignments()
         minimumBox:SetText(tostring(getProfile().alertMinDuration))
-        generalPanel:SetShown(selectedTab == "general")
-        layoutPanel:SetShown(selectedTab == "buffs" or selectedTab == "debuffs")
+        contentPanels.general:SetShown(selectedTab == "general")
+        local debuffDetail = selectedTab == "debuffs" and debuffPageState.current or nil
+        contentPanels.layout:SetShown((selectedTab == "buffs" or selectedTab == "debuffs") and not debuffDetail)
         layoutControls:SetShown(selectedSection == "layout")
         textControls:SetShown(selectedSection == "text")
         for section, button in pairs(sectionTabs) do
@@ -1317,10 +2620,32 @@ local function makeConfig()
                 label:SetTextColor(1, selected and 0.82 or 0.72, selected and 0.28 or 0.18)
             end
         end
-        alertsPanel:SetShown(selectedTab == "alerts")
-        profilesPanel:SetShown(selectedTab == "profiles")
-        recoveryPanel:SetShown(selectedTab == "recovery")
-        languagePanel:SetShown(selectedTab == "language")
+        for _, button in ipairs(debuffPageState.navigation) do button:SetShown(selectedTab == "debuffs" and not debuffDetail) end
+        contentPanels.alerts:SetShown(selectedTab == "alerts" and not buffAlertDetail)
+        assignmentFrame:SetShown(selectedTab == "alerts" and buffAlertDetail)
+        debuffPageState.sounds:SetShown(debuffDetail == "sounds")
+        debuffPageState.appearance:SetShown(debuffDetail == "appearance")
+        debuffPageState.library:SetShown(debuffDetail == "library")
+        if debuffPageState.trackers then debuffPageState.trackers:SetShown(debuffDetail == "trackers") end
+        contentPanels.profiles:SetShown(selectedTab == "profiles")
+        contentPanels.recovery:SetShown(selectedTab == "recovery")
+        contentPanels.language:SetShown(selectedTab == "language")
+        contentPanels.diagnostics:SetShown(selectedTab == "diagnostics")
+        if selectedTab == "diagnostics" then refreshDiagnostics() end
+        if debuffDetail == "sounds" then refreshDebuffAlerts() end
+        if debuffDetail == "library" and debuffPageState.refreshLibrary then debuffPageState.refreshLibrary() end
+        if debuffDetail == "trackers" and debuffPageState.refreshTrackers then debuffPageState.refreshTrackers() end
+        awarenessCheck:SetChecked(getProfile().debuffAwareness)
+        pulseCheck:SetChecked(getProfile().debuffPulse)
+        updateBorderStyle()
+        appearanceSyncing = true
+        for key, control in pairs(appearanceControls) do
+            control.slider:SetValue(getProfile()[key])
+            control.box:SetText(tostring(getProfile()[key]))
+        end
+        appearanceSyncing = false
+        soundEnable:SetChecked(getProfile().debuffSoundsEnabled)
+        updateDebuffSoundButton()
         for kind, tab in pairs(tabs) do
             local selected = selectedTab == kind
             tab.selected:SetShown(selected)
@@ -1341,7 +2666,13 @@ local function makeConfig()
     return frame
 end
 
-local function openConfig()
+local function openConfig(tab)
+    if tab == "general" or tab == "buffs" or tab == "debuffs" or tab == "alerts"
+        or tab == "profiles" or tab == "recovery" or tab == "language" or tab == "diagnostics" then
+        selectedTab = tab
+        if tab == "buffs" or tab == "debuffs" then selectedKind = tab end
+        if tab == "debuffs" then debuffPageState.current = nil end
+    end
     local frame = makeConfig()
     refreshConfig()
     frame:Show()

@@ -2,18 +2,24 @@
 ## Title: ForeverBuffFrames
 ## Notes: Movable, configurable player buff and debuff bars for WoW Forever
 ## Author: Wyveryx
-## Version: 0.9.0-beta.1
+## Version: 0.9.9-beta.1
 ## X-Website: https://github.com/Wyveryx/ForeverBuffFrames
 ## X-Category: Buffs & Debuffs
 ## IconTexture: Interface\AddOns\ForeverBuffFrames\Media\MinimapIcon.png
 ## SavedVariables: ForeverBuffFramesDB
 
+LibSharedMedia-3.0\LibStub\LibStub.lua
+LibSharedMedia-3.0\CallbackHandler-1.0\CallbackHandler-1.0.lua
+LibSharedMedia-3.0\LibSharedMedia-3.0\lib.xml
 Core.lua
 Localization.lua
 Media.lua
+DebuffSoundLibrary.lua
 Profiles.lua
 Backup.lua
 Alerts.lua
+BuffRemovalSounds.lua
+DebuffSounds.lua
 Theme.lua
 Minimap.lua
 AuraFrames.lua

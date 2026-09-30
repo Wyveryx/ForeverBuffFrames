@@ -16,6 +16,6 @@ Repeat these steps after changing your setup. The saved code contains every name
 2. Copy the code from your saved file and paste it into the box on that tab.
 3. Click **Restore pasted code**. A current backup replaces the saved profile collection and selects the profile that was active when the code was created.
 
-Older `FBF1` and `FBF2` backup codes remain supported. Because `FBF1` codes contain only one setup, restoring one replaces the settings in the currently active profile without deleting the other named profiles. `FBF2` codes restore their complete profile collection.
+Older `FBF1`, `FBF2`, and earlier `FBF3` backup layouts remain supported. Because `FBF1` codes contain only one setup, restoring one replaces the settings in the currently active profile without deleting the other named profiles. `FBF2` and `FBF3` codes restore their complete profile collection. New codes include Personal Debuff Trackers and omit the retired expiry-debug setting; codes created before either change remain valid.
 
 The code is a manual backup. WoW addons cannot create a separate recovery file from inside the game, so you must keep the code outside WoW for it to survive the beta settings bug.

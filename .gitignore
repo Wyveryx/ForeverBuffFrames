@@ -8,3 +8,6 @@ dist/
 *.tmp
 .DS_Store
 Thumbs.db
+
+# User-installed recordings are local unless deliberately added to a release.
+/CustomSounds/Seal of Fury.*

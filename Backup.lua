@@ -4,9 +4,21 @@ local L = FBF.L
 -- Backup owns every on-disk backup format. Keep the field order append-only:
 -- FBF3 compact profiles are positional and old codes depend on these layouts.
 local Backup = {
+    -- The legacy field order remains available to the readers below. New
+    -- exports use exportFields so positional FBF3 codes no longer carry the
+    -- retired debugAlerts option.
     fields = {
         "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs",
         "expirationSounds", "alertSound", "onlyMyBuffs", "debugAlerts", "alertMinDuration",
+    },
+    exportFields = {
+        "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs",
+        "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+        "debuffAwareness", "debuffPulse", "debuffBorderStyle",
+        "debuffSoundsEnabled", "debuffSoundName",
+        "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison",
+        "debuffBorderThickness", "debuffPulseExpansion",
+        "buffRemovedSounds", "buffRemovalSound",
     },
     barFields = {
         "x", "y", "size", "gapX", "gapY", "perRow", "rows", "grow",
@@ -15,13 +27,19 @@ local Backup = {
     booleans = {
         showMinimap = true, hideBlizzardBuffs = true, hideBlizzardDebuffs = true,
         expirationSounds = true, onlyMyBuffs = true, debugAlerts = true,
+        debuffAwareness = true, debuffPulse = true,
+        debuffSoundsEnabled = true,
+        buffRemovedSounds = true,
+        experimentalTTSEnabled = true,
     },
     numbers = {
         minimapAngle = { -3600, 3600 }, alertMinDuration = { 0, 3600, true },
+        experimentalTTSSpellID = { 0, 100000000, true },
         x = { -10000, 10000 }, y = { -10000, 10000 },
         size = { 16, 96, true }, gapX = { 0, 32, true }, gapY = { 0, 32, true },
         perRow = { 1, 20, true }, rows = { 1, 10, true },
         timerSize = { 6, 36, true }, countSize = { 6, 36, true },
+        debuffBorderThickness = { 1, 6, true }, debuffPulseExpansion = { 0, 12, true },
     },
     choices = {
         grow = { left = true, right = true },
@@ -30,6 +48,7 @@ local Backup = {
         timerPos = { below = true, above = true, center = true },
         countPos = { bottomright = true, bottomleft = true, topright = true, topleft = true },
         outline = { none = true, outline = true, thick = true },
+        debuffBorderStyle = { border = true, bordericon = true, icon = true },
     },
 }
 FBF.Backup = Backup
@@ -73,6 +92,100 @@ local function blacklistValue(profile)
     return table.concat(blocked, ",")
 end
 
+local function trackerValue(profile)
+    local entries = {}
+    for spellID, tracker in pairs(profile.customDebuffTrackers or {}) do
+        if type(spellID) == "number" and spellID > 0 and spellID % 1 == 0 and type(tracker) == "table" then
+            entries[#entries + 1] = {
+                id = spellID,
+                value = table.concat({
+                    tostring(spellID),
+                    tracker.enabled == false and "0" or "1",
+                    Backup.Encode(type(tracker.name) == "string" and tracker.name:sub(1, 80) or ""),
+                    Backup.Encode(type(tracker.sound) == "string" and tracker.sound:sub(1, 150) or "default"),
+                }, "~"),
+            }
+        end
+    end
+    table.sort(entries, function(a, b) return a.id < b.id end)
+    local values = {}
+    for index, entry in ipairs(entries) do values[index] = entry.value end
+    return table.concat(values, "|")
+end
+
+local function readTrackers(value)
+    local trackers = {}
+    if value == nil or value == "" then return trackers end
+    if #value > 50000 then return nil, L("Personal tracker data is too large.") end
+    for entry in value:gmatch("[^|]+") do
+        local idText, enabled, name, sound = entry:match("^(%d+)~([01])~([^~]*)~(.*)$")
+        local spellID = tonumber(idText)
+        name, sound = name and Backup.Decode(name), sound and Backup.Decode(sound)
+        if not spellID or spellID < 1 or spellID % 1 ~= 0 or not name or name == "" or #name > 80
+            or not sound or sound == "" or #sound > 150 then
+            return nil, L("Invalid Personal Tracker data.")
+        end
+        trackers[spellID] = { name = name, sound = sound, enabled = enabled == "1" }
+    end
+    return trackers
+end
+
+local function buffAlertValue(profile)
+    local entries = {}
+    for spellID, alert in pairs(profile.learnedBuffAlerts or {}) do
+        if type(spellID) == "number" and alert.enabled == true then
+            entries[#entries + 1] = table.concat({
+                tostring(spellID), Backup.Encode(alert.name or tostring(spellID)),
+                Backup.Encode(alert.sound or ""), alert.combatOnly == true and "1" or "0"
+            }, "~")
+        end
+    end
+    table.sort(entries)
+    return table.concat(entries, "|")
+end
+
+local function readBuffAlerts(value)
+    local alerts = {}
+    for entry in (value or ""):gmatch("[^|]+") do
+        local idText, name, sound, combatOnly = entry:match("^(%d+)~([^~]*)~([^~]*)~([01])$")
+        if not idText then
+            idText, name, sound = entry:match("^(%d+)~([^~]*)~(.*)$")
+            combatOnly = "0"
+        end
+        local spellID = tonumber(idText)
+        name, sound = name and Backup.Decode(name), sound and Backup.Decode(sound)
+        if not spellID or not name or #name > 80 or not sound or #sound > 240 then
+            return nil, L("Invalid buff alert data.")
+        end
+        alerts[spellID] = { name = name, enabled = true, sound = sound ~= "" and sound or nil, combatOnly = combatOnly == "1" }
+    end
+    return alerts
+end
+
+local function customSoundValue(profile)
+    local entries = {}
+    for label, path in pairs(profile.customSounds or {}) do
+        if type(label) == "string" and type(path) == "string" then
+            entries[#entries + 1] = Backup.Encode(label) .. "~" .. Backup.Encode(path)
+        end
+    end
+    table.sort(entries)
+    return table.concat(entries, "|")
+end
+
+local function readCustomSounds(value)
+    local sounds = {}
+    for entry in (value or ""):gmatch("[^|]+") do
+        local label, path = entry:match("^([^~]*)~(.*)$")
+        label, path = label and Backup.Decode(label), path and Backup.Decode(path)
+        if not label or label == "" or #label > 100 or not path or path == "" or #path > 240 then
+            return nil, L("Invalid custom sound data.")
+        end
+        sounds[label] = path
+    end
+    return sounds
+end
+
 local function readValue(values, key, field)
     local value = values[key]
     if value == nil then return nil, L("Backup is missing %s.", key) end
@@ -100,11 +213,14 @@ function Backup.ExportProfile(source)
     local function add(key, value)
         parts[#parts + 1] = key .. "=" .. Backup.Encode(value)
     end
-    for _, key in ipairs(Backup.fields) do add(key, source[key]) end
+    for _, key in ipairs(Backup.exportFields) do add(key, source[key]) end
     for _, kind in ipairs({ "buffs", "debuffs" }) do
         for _, key in ipairs(Backup.barFields) do add(kind .. "." .. key, source[kind][key]) end
     end
     add("alertBlacklist", blacklistValue(source))
+    add("customDebuffTrackers", trackerValue(source))
+    add("buffAlerts", buffAlertValue(source))
+    add("customSounds", customSoundValue(source))
     return table.concat(parts, ";")
 end
 
@@ -119,9 +235,68 @@ function Backup.ImportProfile(code)
     end
     local restored = { buffs = {}, debuffs = {}, alertBlacklist = {} }
     for _, field in ipairs(Backup.fields) do
-        local value, err = readValue(values, field, field)
+        local value, err
+        if field == "debugAlerts" and values[field] == nil then
+            value = false
+        else
+            value, err = readValue(values, field, field)
+        end
         if err then return nil, err end
         restored[field] = value
+    end
+    for _, field in ipairs({ "debuffAwareness", "debuffPulse", "debuffBorderStyle" }) do
+        if values[field] == nil then
+            restored[field] = field == "debuffBorderStyle" and "border" or false
+        else
+            local value, err = readValue(values, field, field)
+            if err then return nil, err end
+            restored[field] = value
+        end
+    end
+    for _, field in ipairs({ "debuffSoundsEnabled", "debuffSoundName", "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison" }) do
+        if values[field] == nil then
+            restored[field] = field == "debuffSoundsEnabled" and false or (restored.debuffSoundName or "default")
+        else
+            local value, err = readValue(values, field, field)
+            if err then return nil, err end
+            restored[field] = value
+        end
+    end
+    for _, field in ipairs({ "debuffBorderThickness", "debuffPulseExpansion" }) do
+        if values[field] == nil then
+            restored[field] = field == "debuffBorderThickness" and 2 or 4
+        else
+            local value, err = readValue(values, field, field)
+            if err then return nil, err end
+            restored[field] = value
+        end
+    end
+    for _, field in ipairs({ "buffRemovedSounds", "buffRemovalSound" }) do
+        if values[field] == nil then
+            restored[field] = field == "buffRemovedSounds" and false or "default"
+        else
+            local value, err = readValue(values, field, field)
+            if err then return nil, err end
+            restored[field] = value
+        end
+    end
+    for _, field in ipairs({ "experimentalTTSEnabled", "experimentalTTSTarget", "experimentalTTSText" }) do
+        if values[field] == nil then
+            if field == "experimentalTTSEnabled" then restored[field] = false
+            elseif field == "experimentalTTSTarget" then restored[field] = "Fire Shield"
+            else restored[field] = "Fire Shield expired" end
+        else
+            local value, err = readValue(values, field, field)
+            if err then return nil, err end
+            restored[field] = value
+        end
+    end
+    if values.experimentalTTSSpellID == nil then
+        restored.experimentalTTSSpellID = 0
+    else
+        local value, err = readValue(values, "experimentalTTSSpellID", "experimentalTTSSpellID")
+        if err then return nil, err end
+        restored.experimentalTTSSpellID = value
     end
     for _, kind in ipairs({ "buffs", "debuffs" }) do
         for _, field in ipairs(Backup.barFields) do
@@ -144,6 +319,15 @@ function Backup.ImportProfile(code)
         local number = tonumber(id)
         if number and number > 0 then restored.alertBlacklist[number] = true end
     end
+    local trackers, trackerError = readTrackers(values.customDebuffTrackers)
+    if not trackers then return nil, trackerError end
+    restored.customDebuffTrackers = trackers
+    local buffAlerts, buffAlertError = readBuffAlerts(values.buffAlerts)
+    if not buffAlerts then return nil, buffAlertError end
+    restored.learnedBuffAlerts = buffAlerts
+    local customSounds, customSoundError = readCustomSounds(values.customSounds)
+    if not customSounds then return nil, customSoundError end
+    restored.customSounds = customSounds
     return restored
 end
 
@@ -159,11 +343,14 @@ local function compactProfile(source)
         return value
     end
     local function add(key, value) values[#values + 1] = Backup.Encode(compactNumber(key, value)) end
-    for _, key in ipairs(Backup.fields) do add(key, source[key]) end
+    for _, key in ipairs(Backup.exportFields) do add(key, source[key]) end
     for _, kind in ipairs({ "buffs", "debuffs" }) do
         for _, key in ipairs(Backup.barFields) do add(key, source[kind][key]) end
     end
     add("alertBlacklist", blacklistValue(source))
+    add("customDebuffTrackers", trackerValue(source))
+    add("buffAlerts", buffAlertValue(source))
+    add("customSounds", customSoundValue(source))
     return table.concat(values, ",")
 end
 
@@ -174,13 +361,62 @@ local historicalBarFields = {
     { "x", "y", "size", "gapX", "gapY", "perRow", "rows", "grow", "sort", "timerSize", "countSize", "timerPos", "countPos", "font", "outline" },
     Backup.barFields,
 }
+local baseProfileFields = { "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration" }
+local awarenessProfileFields = {
+    "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+    "debuffAwareness", "debuffPulse", "debuffBorderStyle",
+}
+local sharedSoundProfileFields = {
+    "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+    "debuffAwareness", "debuffPulse", "debuffBorderStyle", "debuffSoundsEnabled", "debuffSoundName",
+}
+local typedSoundProfileFields = {
+    "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+    "debuffAwareness", "debuffPulse", "debuffBorderStyle", "debuffSoundsEnabled", "debuffSoundName",
+    "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison",
+}
+local buffRemovalProfileFields = {
+    "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+    "debuffAwareness", "debuffPulse", "debuffBorderStyle", "debuffSoundsEnabled", "debuffSoundName",
+    "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison",
+    "debuffBorderThickness", "debuffPulseExpansion", "buffRemovedSounds",
+}
+local customRemovalSoundProfileFields = {
+    "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+    "debuffAwareness", "debuffPulse", "debuffBorderStyle", "debuffSoundsEnabled", "debuffSoundName",
+    "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison",
+    "debuffBorderThickness", "debuffPulseExpansion", "buffRemovedSounds", "buffRemovalSound",
+}
+local experimentalTTSNameProfileFields = {
+    "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+    "debuffAwareness", "debuffPulse", "debuffBorderStyle", "debuffSoundsEnabled", "debuffSoundName",
+    "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison",
+    "debuffBorderThickness", "debuffPulseExpansion", "buffRemovedSounds", "buffRemovalSound",
+    "experimentalTTSEnabled", "experimentalTTSTarget", "experimentalTTSText",
+}
+local experimentalTTSProfileFields = {
+    "minimapAngle", "showMinimap", "hideBlizzardBuffs", "hideBlizzardDebuffs", "expirationSounds", "alertSound", "onlyMyBuffs", "alertMinDuration",
+    "debuffAwareness", "debuffPulse", "debuffBorderStyle", "debuffSoundsEnabled", "debuffSoundName",
+    "debuffSoundMagic", "debuffSoundCurse", "debuffSoundDisease", "debuffSoundPoison",
+    "debuffBorderThickness", "debuffPulseExpansion", "buffRemovedSounds", "buffRemovalSound",
+    "experimentalTTSEnabled", "experimentalTTSTarget", "experimentalTTSText", "experimentalTTSSpellID",
+}
+local historicalSchemas = {}
+for _, fields in ipairs({ baseProfileFields, Backup.fields }) do
+    for _, bars in ipairs(historicalBarFields) do historicalSchemas[#historicalSchemas + 1] = { fields, bars } end
+end
+for _, fields in ipairs({ awarenessProfileFields, sharedSoundProfileFields, typedSoundProfileFields, buffRemovalProfileFields, customRemovalSoundProfileFields, experimentalTTSNameProfileFields, experimentalTTSProfileFields, Backup.exportFields }) do
+    historicalSchemas[#historicalSchemas + 1] = { fields, Backup.barFields }
+end
 
 local function importCompactProfile(payload)
     local encoded = split(payload, ",")
-    local layout
-    for _, candidate in ipairs(historicalBarFields) do
-        if #encoded == #Backup.fields + 2 * #candidate + 1 then
-            layout = candidate
+    local layout, profileFields
+    for _, schema in ipairs(historicalSchemas) do
+        local fields, candidate = schema[1], schema[2]
+        local extras = #encoded - (#fields + 2 * #candidate)
+        if extras >= 1 and extras <= 4 then
+            layout, profileFields = candidate, fields
             break
         end
     end
@@ -191,11 +427,14 @@ local function importCompactProfile(payload)
         parts[#parts + 1] = key .. "=" .. encoded[index]
         index = index + 1
     end
-    for _, key in ipairs(Backup.fields) do add(key) end
+    for _, key in ipairs(profileFields) do add(key) end
     for _, kind in ipairs({ "buffs", "debuffs" }) do
         for _, key in ipairs(layout) do add(kind .. "." .. key) end
     end
     add("alertBlacklist")
+    if index <= #encoded then add("customDebuffTrackers") end
+    if index <= #encoded then add("buffAlerts") end
+    if index <= #encoded then add("customSounds") end
     return Backup.ImportProfile(table.concat(parts, ";"))
 end
 

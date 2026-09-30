@@ -3,6 +3,7 @@ local L = FBF.L
 
 function FBF.CreateAlerts(getDB, report, playAlertSound, refreshOptions)
     local watchedAuras = {}
+    local recentFires = {}
     -- Aura names follow the game client locale, independently of the optional
     -- ForeverBuffFrames display-language override.
     local quietBuffNames = FBF.Locale.QuietBuffNames()
@@ -10,6 +11,18 @@ function FBF.CreateAlerts(getDB, report, playAlertSound, refreshOptions)
 
     function service.Reset()
         watchedAuras = {}
+    end
+
+    local function announce(watch)
+        local signature = tostring(watch.spellID) .. ":" .. tostring(math.floor(watch.expirationTime + 0.5))
+        local now = GetTime()
+        if recentFires[signature] and now - recentFires[signature] < 2 then return end
+        recentFires[signature] = now
+        if RaidNotice_AddMessage and RaidWarningFrame then
+            RaidNotice_AddMessage(RaidWarningFrame, L("%s expires in 10 seconds", watch.name), (ChatTypeInfo and ChatTypeInfo.RAID_WARNING) or { r = 1, g = 0, b = 0 })
+        end
+        playAlertSound()
+        watch.fired = true
     end
 
     function service.Sync()
@@ -39,12 +52,10 @@ function FBF.CreateAlerts(getDB, report, playAlertSound, refreshOptions)
                     local watch = { spellID = spellID, name = aura.name or tostring(spellID), expirationTime = expirationTime }
                     currentAuras[instanceID] = watch
                     local delay = expirationTime - GetTime() - 10
-                    if db.debugAlerts then report(L("alert debug: scheduled %s (%d)", watch.name, spellID)) end
                     C_Timer.After(math.max(0, delay), function()
                         db = getDB()
                         if watchedAuras[instanceID] ~= watch or not db.expirationSounds then return end
                         if InCombatLockdown() then
-                            if db.debugAlerts then report(L("alert debug: skipped %s during combat", watch.name)) end
                             return
                         end
                         if not C_UnitAuras.GetAuraDataByAuraInstanceID then return end
@@ -54,23 +65,10 @@ function FBF.CreateAlerts(getDB, report, playAlertSound, refreshOptions)
                             or type(active.expirationTime) ~= "number"
                             or math.abs(active.expirationTime - expirationTime) > 0.5
                             or expirationTime - GetTime() < 8.5 then
-                            if db.debugAlerts then report(L("alert debug: skipped changed or removed %s", watch.name)) end
                             return
                         end
-                        if RaidNotice_AddMessage and RaidWarningFrame then
-                            RaidNotice_AddMessage(RaidWarningFrame, L("%s expires in 10 seconds", watch.name), (ChatTypeInfo and ChatTypeInfo.RAID_WARNING) or { r = 1, g = 0, b = 0 })
-                        end
-                        playAlertSound()
-                        watch.fired = true
-                        if db.debugAlerts then report(L("alert debug: warned for %s (%d)", watch.name, spellID)) end
+                        announce(watch)
                     end)
-                end
-            end
-        end
-        if db.debugAlerts then
-            for instanceID, previous in pairs(watchedAuras) do
-                if not currentAuras[instanceID] and not previous.fired then
-                    report(L("alert debug: cancelled warning for %s (%d)", previous.name, previous.spellID))
                 end
             end
         end

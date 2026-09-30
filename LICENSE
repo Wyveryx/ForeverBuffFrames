@@ -8,5 +8,12 @@ No permission is granted to redistribute, repackage, sell, sublicense, modify fo
 redistribution, or claim ownership of this addon or its artwork without prior
 written permission from the copyright holder.
 
+This license does not apply to third-party components distributed with the addon.
+Those components remain under their own licenses, retained alongside the relevant
+files. In particular, Media/AlertSounds contains CC0 1.0, CC BY 3.0, and MIT media
+with attribution and license documents in Media/AlertSounds/NOTICE.md and its
+Licenses directory. LibSharedMedia and its dependencies retain their included
+upstream licenses.
+
 This software is provided "as is", without warranty of any kind, express or
 implied. The copyright holder is not liable for damages arising from its use.
