@@ -13,6 +13,7 @@
 - Added safe right padding to Debuff Sound custom-file rows, kept Personal Trackers inside the responsive content pane, and capped the long default-removal selector within its Alerts column.
 - Updated Diagnostics with live expiration-watch and tracking-selector status, and removed stale Phase 10 development wording.
 - Removed routine startup, successful container-rebuild, and successful sample-alert debug messages from chat while retaining actionable warnings and errors.
+- Updated recovery guidance to note that the earlier beta settings-loss issue appears resolved while keeping manual backup available if it returns.
 - Added profile and manual backup support for the tracking-control visibility setting.
 
 ## 0.9.9-beta.1 — 2026-09-30

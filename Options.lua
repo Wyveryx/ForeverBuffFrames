@@ -1858,7 +1858,7 @@ local function makeConfig()
     profileHelp:SetPoint("TOPLEFT", 25, -135)
     profileHelp:SetWidth(630)
     profileHelp:SetJustifyH("LEFT")
-    profileHelp:SetText(L("Each profile stores the complete ForeverBuffFrames setup. The active profile is saved automatically. Backup codes continue to protect all profiles from the current beta settings bug."))
+    profileHelp:SetText(L("Each profile stores the complete ForeverBuffFrames setup. The active profile is saved automatically. Backup codes remain available in case the earlier beta settings problem returns."))
     local profileButton = CreateFrame("Button", nil, profilesPanel, "UIPanelButtonTemplate")
     profileButton:SetSize(300, 27)
     profileButton:SetPoint("TOPLEFT", profileHelp, "BOTTOMLEFT", 0, -18)
@@ -2025,7 +2025,7 @@ local function makeConfig()
         detail:SetText(body)
         recoveryEntries[#recoveryEntries + 1] = { heading = heading, detail = detail }
     end
-    recoveryText(L("Why is this here?"), L("The current WoW beta sometimes forgets addon settings after a reload or restart. Save a backup code outside the game now; paste it back here if your setup disappears. The addon cannot save a separate recovery file itself."))
+    recoveryText(L("Why is this here?"), L("Earlier WoW Forever beta builds sometimes forgot addon settings after a reload or restart. That issue currently appears resolved, but you can keep a backup code outside the game in case it returns. The addon cannot save a separate recovery file itself."))
     recoveryText(L("1. Save your profiles"), L("Click Copy backup code below, press Ctrl+C, then paste it into Notepad and save the file. The code contains every named profile and the active-profile selection."))
     recoveryText(L("2. Restore your profiles"), L("Paste the code from your saved file into the box below and click Restore pasted code. New backup codes replace all profiles; older backup codes restore into the active profile."))
 

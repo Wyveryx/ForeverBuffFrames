@@ -464,6 +464,25 @@ for locale, values in pairs(recoveryBodyValues) do
 end
 for index, key in ipairs(recoveryBodyKeys) do translations.esMX[key] = recoveryBodyValues.esES[index] end
 
+local resolvedSettingsProfileKey = "Each profile stores the complete ForeverBuffFrames setup. The active profile is saved automatically. Backup codes remain available in case the earlier beta settings problem returns."
+local resolvedSettingsRecoveryKey = "Earlier WoW Forever beta builds sometimes forgot addon settings after a reload or restart. That issue currently appears resolved, but you can keep a backup code outside the game in case it returns. The addon cannot save a separate recovery file itself."
+local resolvedSettingsTranslations = {
+    deDE = { "Jedes Profil speichert die vollständige ForeverBuffFrames-Konfiguration. Das aktive Profil wird automatisch gespeichert. Sicherungscodes bleiben verfügbar, falls das frühere Beta-Einstellungsproblem zurückkehrt.", "Frühere WoW-Forever-Betaversionen vergaßen nach einem Neuladen oder Neustart manchmal Addon-Einstellungen. Das Problem scheint derzeit behoben zu sein, aber du kannst einen Sicherungscode außerhalb des Spiels aufbewahren, falls es zurückkehrt. Das Addon kann selbst keine separate Wiederherstellungsdatei speichern." },
+    frFR = { "Chaque profil conserve toute la configuration de ForeverBuffFrames. Le profil actif est enregistré automatiquement. Les codes de sauvegarde restent disponibles au cas où l’ancien problème de paramètres de la bêta réapparaîtrait.", "Les anciennes versions bêta de WoW Forever oubliaient parfois les paramètres des addons après un rechargement ou un redémarrage. Ce problème semble actuellement résolu, mais vous pouvez conserver un code de sauvegarde hors du jeu au cas où il réapparaîtrait. L’addon ne peut pas créer lui-même un fichier de récupération séparé." },
+    esES = { "Cada perfil guarda toda la configuración de ForeverBuffFrames. El perfil activo se guarda automáticamente. Los códigos de respaldo siguen disponibles por si vuelve el anterior problema de ajustes de la beta.", "Las versiones beta anteriores de WoW Forever a veces olvidaban los ajustes de los addons después de recargar o reiniciar. El problema parece resuelto actualmente, pero puedes guardar un código de respaldo fuera del juego por si vuelve. El addon no puede crear por sí mismo un archivo de recuperación separado." },
+    itIT = { "Ogni profilo conserva l’intera configurazione di ForeverBuffFrames. Il profilo attivo viene salvato automaticamente. I codici di backup restano disponibili nel caso ritorni il precedente problema delle impostazioni beta.", "Le versioni beta precedenti di WoW Forever a volte dimenticavano le impostazioni degli addon dopo un ricaricamento o riavvio. Il problema sembra attualmente risolto, ma puoi conservare un codice di backup fuori dal gioco nel caso ritorni. L’addon non può creare autonomamente un file di ripristino separato." },
+    ptBR = { "Cada perfil armazena toda a configuração do ForeverBuffFrames. O perfil ativo é salvo automaticamente. Os códigos de backup continuam disponíveis caso o antigo problema das configurações beta retorne.", "Versões beta anteriores do WoW Forever às vezes esqueciam as configurações dos addons após recarregar ou reiniciar. O problema parece resolvido no momento, mas você pode guardar um código de backup fora do jogo caso ele retorne. O addon não pode criar sozinho um arquivo de recuperação separado." },
+    ruRU = { "Каждый профиль хранит полную настройку ForeverBuffFrames. Активный профиль сохраняется автоматически. Коды резервной копии остаются доступными на случай возврата прежней проблемы бета-версии с настройками.", "В ранних бета-версиях WoW Forever настройки аддонов иногда пропадали после перезагрузки или перезапуска. Сейчас проблема, похоже, решена, но можно сохранить код резервной копии вне игры на случай её возвращения. Аддон не может сам создать отдельный файл восстановления." },
+    koKR = { "각 프로필에는 ForeverBuffFrames의 전체 설정이 저장되며 활성 프로필은 자동으로 저장됩니다. 이전 베타 설정 문제가 다시 발생할 경우를 대비해 백업 코드를 계속 사용할 수 있습니다.", "이전 WoW Forever 베타 빌드에서는 다시 불러오거나 재시작한 뒤 애드온 설정이 사라지는 경우가 있었습니다. 현재는 해결된 것으로 보이지만 문제가 다시 발생할 경우를 대비해 게임 밖에 백업 코드를 보관할 수 있습니다. 애드온은 별도의 복구 파일을 직접 만들 수 없습니다." },
+    zhCN = { "每个配置方案都会保存完整的 ForeverBuffFrames 设置，当前方案会自动保存。备份代码仍然可用，以防早期测试版的设置问题再次出现。", "早期 WoW Forever 测试版有时会在重载或重启后遗忘插件设置。目前该问题似乎已解决，但仍可在游戏外保存备份代码，以防问题再次出现。插件无法自行创建单独的恢复文件。" },
+    zhTW = { "每個設定檔都會儲存完整的 ForeverBuffFrames 設定，目前設定檔會自動儲存。備份代碼仍然可用，以防早期測試版的設定問題再次出現。", "早期 WoW Forever 測試版有時會在重新載入或重新啟動後遺忘插件設定。目前該問題似乎已解決，但仍可在遊戲外保存備份代碼，以防問題再次出現。插件無法自行建立獨立的還原檔案。" },
+}
+resolvedSettingsTranslations.esMX = resolvedSettingsTranslations.esES
+for locale, values in pairs(resolvedSettingsTranslations) do
+    translations[locale][resolvedSettingsProfileKey] = values[1]
+    translations[locale][resolvedSettingsRecoveryKey] = values[2]
+end
+
 -- Messages shown outside the settings window: chat feedback, test mode,
 -- combat restrictions, profile actions, and backup validation.
 local runtimeKeys = {

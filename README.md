@@ -32,7 +32,7 @@ Development status and release scope are tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Important beta behavior
 
-The Forever beta may currently lose addon saved variables after a reload or restart. ForeverBuffFrames includes a **Backup / Recovery** tab so you can copy your complete profile collection into a text file and restore it later. See [RECOVERY.md](RECOVERY.md) for the short walkthrough.
+Earlier Forever beta builds could lose addon saved variables after a reload or restart. That issue currently appears resolved, but ForeverBuffFrames retains a **Backup / Recovery** tab so you can copy your complete profile collection into a text file and restore it if the problem returns. See [RECOVERY.md](RECOVERY.md) for the short walkthrough.
 
 Ten-second expiration alerts use ordinary aura timing and therefore run outside combat. The separate buff-removal option uses Blizzard's exact-spell sound registration: ForeverBuffFrames learns eligible timed player buffs while aura data is readable, then lets you enable and assign a recording to each buff before combat. Blizzard plays the chosen sound when that buff is removed. A buff first encountered during restricted combat must be learned outside combat before it can be selected. Removal sounds fire after the effect is gone; they are not an advance warning.
 
