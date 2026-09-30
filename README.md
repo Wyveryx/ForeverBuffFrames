@@ -4,6 +4,8 @@ ForeverBuffFrames provides movable, configurable player buff and debuff bars for
 
 This release targets the Forever beta client (`Interface 16001`).
 
+Development status and release scope are tracked in [ROADMAP.md](ROADMAP.md).
+
 ## Features
 
 - Separate buff and debuff bars with independent positions and layouts
