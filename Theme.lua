@@ -8,6 +8,9 @@ FBF.Theme = {
     accentBright = { 0.92, 0.28, 0.16, 1 },
     border = { 0.48, 0.23, 0.11, 0.9 },
     gold = { 1, 0.72, 0.28, 1 },
+    popupRowHeight = 32,
+    popupRowStep = 34,
+    popupPadding = 8,
 }
 
 function FBF.Theme.ApplyWindow(frame)
@@ -32,6 +35,29 @@ function FBF.Theme.ApplyPopup(frame)
     })
     frame:SetBackdropColor(unpack(FBF.Theme.background))
     frame:SetBackdropBorderColor(unpack(FBF.Theme.border))
+    frame:SetToplevel(true)
+end
+
+function FBF.Theme.RaisePopup(frame, owner)
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(math.max(frame:GetFrameLevel(), (owner and owner:GetFrameLevel() or 0) + 100))
+end
+
+function FBF.Theme.StylePopupRow(button, label, selected)
+    FBF.Theme.AddRowHighlight(button, 2)
+    if selected then
+        selected:ClearAllPoints()
+        selected:SetPoint("TOPLEFT", 2, -2)
+        selected:SetPoint("BOTTOMRIGHT", -2, 2)
+        selected:SetColorTexture(unpack(FBF.Theme.accent))
+    end
+    if label then
+        label:ClearAllPoints()
+        label:SetPoint("LEFT", 12, 0)
+        label:SetPoint("RIGHT", -12, 0)
+        label:SetJustifyH("LEFT")
+        label:SetWordWrap(false)
+    end
 end
 
 function FBF.Theme.AddTitlePlaque(frame)

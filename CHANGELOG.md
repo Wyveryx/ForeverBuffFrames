@@ -9,6 +9,8 @@
 - Reserved a full-size selector slot inside the buff holder so the movable outline and drag handle include it without overlapping left-growing auras.
 - Replaced the padded quick-slot artwork with a full-edge icon border so the magnifier uses the same visual footprint as neighboring buffs.
 - Applied Blizzard's rounded action-icon mask and frame to match the corner treatment of the aura icons.
+- Standardized dropdown row height, padding, selected-state insets, selector height, and popup elevation across the configuration interface.
+- Added safe right padding to Debuff Sound custom-file rows, kept Personal Trackers inside the responsive content pane, and capped the long default-removal selector within its Alerts column.
 - Added profile and manual backup support for the tracking-control visibility setting.
 
 ## 0.9.9-beta.1 — 2026-09-30
